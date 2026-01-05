@@ -18,7 +18,7 @@ import DreamNode from '../components/DreamNode';
 import DreamModal from '../components/DreamModal';
 import NeuralBackground from '../components/NeuralBackground';
 import { supabase } from '../components/supabaseClient';
-import { LanguageProvider, useLanguage } from '../components/LanguageContext'; // <--- Importamos o contexto
+import { LanguageProvider, useLanguage } from '../components/LanguageContext';
 
 const nodeTypes = { dreamNode: DreamNode };
 
@@ -31,9 +31,8 @@ const defaultStartNode = [
   },
 ];
 
-// --- COMPONENTE INTERNO PARA USAR O HOOK DE LÍNGUA ---
 const DreamApp = () => {
-  const { t, lang, setLang } = useLanguage(); // <--- Hook de tradução
+  const { t, lang, setLang } = useLanguage();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
   
@@ -47,7 +46,7 @@ const DreamApp = () => {
   
   const [saveStatus, setSaveStatus] = useState('saved'); 
   const saveTimeoutRef = useRef(null);
-  const [langMenuOpen, setLangMenuOpen] = useState(false); // Menu de línguas
+  const [langMenuOpen, setLangMenuOpen] = useState(false);
 
   // --- SESSÃO ---
   useEffect(() => {
@@ -192,18 +191,17 @@ const DreamApp = () => {
     setView('login');
   };
 
-  // --- MENU DE IDIOMAS FLUTUANTE ---
   const LanguageSelector = () => (
-    <div className="absolute top-6 right-6 z-50 flex flex-col items-end">
+    <div className="absolute top-6 right-6 z-[100] flex flex-col items-end">
         <button 
             onClick={() => setLangMenuOpen(!langMenuOpen)}
-            className="w-10 h-10 rounded-full bg-black/50 border border-cyan-500/30 hover:border-cyan-400 text-cyan-400 flex items-center justify-center transition-all hover:shadow-[0_0_15px_rgba(0,229,255,0.3)]"
+            className="w-10 h-10 rounded-full bg-black/50 border border-cyan-500/30 hover:border-cyan-400 text-cyan-400 flex items-center justify-center transition-all hover:shadow-[0_0_15px_rgba(0,229,255,0.3)] z-[100]"
         >
             <Globe size={20} />
         </button>
         
         {langMenuOpen && (
-            <div className="mt-2 bg-black/90 border border-cyan-500/30 rounded-lg p-2 flex flex-col gap-1 backdrop-blur-md animate-in fade-in slide-in-from-top-2 w-32 shadow-xl">
+            <div className="mt-2 bg-black/90 border border-cyan-500/30 rounded-lg p-2 flex flex-col gap-1 backdrop-blur-md animate-in fade-in slide-in-from-top-2 w-32 shadow-xl z-[100]">
                 {[
                     { code: 'en', label: 'English' },
                     { code: 'pt', label: 'Português' },
@@ -214,7 +212,7 @@ const DreamApp = () => {
                     <button
                         key={l.code}
                         onClick={() => { setLang(l.code); setLangMenuOpen(false); }}
-                        className={`text-left px-3 py-2 text-xs font-oxanium tracking-wider hover:bg-cyan-500/20 rounded transition-colors ${lang === l.code ? 'text-cyan-400 font-bold' : 'text-gray-400'}`}
+                        className={`text-left px-3 py-2 text-xs font-oxanium tracking-wider hover:bg-cyan-500/20 rounded transition-colors cursor-pointer relative z-[101] ${lang === l.code ? 'text-cyan-400 font-bold' : 'text-gray-400'}`}
                     >
                         {l.label}
                     </button>
@@ -257,8 +255,8 @@ const DreamApp = () => {
         <div className="w-screen h-screen text-white overflow-hidden font-inter relative flex flex-col">
             <NeuralBackground />
             
-            {/* Header Dashboard */}
-            <div className="p-8 flex justify-between items-center border-b border-white/10 bg-black/50 backdrop-blur-md z-10">
+            {/* Header Dashboard - CORREÇÃO: z-50 para ficar ACIMA da lista de projetos */}
+            <div className="p-8 flex justify-between items-center border-b border-white/10 bg-black/50 backdrop-blur-md z-50 relative">
                 <div className="flex items-center gap-4">
                     <div className="w-10 h-10 bg-cyan-900/30 rounded-lg flex items-center justify-center border border-cyan-500/50">
                         <LayoutGrid className="text-cyan-400" />
@@ -284,9 +282,9 @@ const DreamApp = () => {
                      <div className="relative">
                         <button onClick={() => setLangMenuOpen(!langMenuOpen)} className="text-gray-400 hover:text-cyan-400 transition-colors"><Globe size={20}/></button>
                         {langMenuOpen && (
-                            <div className="absolute right-0 top-8 bg-black/90 border border-cyan-500/30 rounded-lg p-2 flex flex-col gap-1 w-32 shadow-xl z-50">
+                            <div className="absolute right-0 top-8 bg-black/90 border border-cyan-500/30 rounded-lg p-2 flex flex-col gap-1 w-32 shadow-xl z-[100]">
                                 {[ { code: 'en', label: 'English' }, { code: 'pt', label: 'Português' }, { code: 'es', label: 'Español' }, { code: 'cn', label: '中文' }, { code: 'jp', label: '日本語' } ].map(l => (
-                                    <button key={l.code} onClick={() => { setLang(l.code); setLangMenuOpen(false); }} className={`text-left px-3 py-2 text-xs hover:bg-cyan-500/20 rounded ${lang === l.code ? 'text-cyan-400 font-bold' : 'text-gray-400'}`}>{l.label}</button>
+                                    <button key={l.code} onClick={() => { setLang(l.code); setLangMenuOpen(false); }} className={`text-left px-3 py-2 text-xs hover:bg-cyan-500/20 rounded cursor-pointer relative z-[101] ${lang === l.code ? 'text-cyan-400 font-bold' : 'text-gray-400'}`}>{l.label}</button>
                                 ))}
                             </div>
                         )}
@@ -380,7 +378,6 @@ const DreamApp = () => {
   );
 };
 
-// --- COMPONENTE PRINCIPAL (WRAPPER) ---
 export default function DreamSystem() {
   return (
     <LanguageProvider>
