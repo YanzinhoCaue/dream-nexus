@@ -48,8 +48,9 @@ const DreamApp = () => {
   const saveTimeoutRef = useRef(null);
   const [langMenuOpen, setLangMenuOpen] = useState(false);
 
-  // --- SESSÃO ---
+  // --- SESSÃO E CORREÇÃO DO REDIRECIONAMENTO ---
   useEffect(() => {
+    // 1. Checagem Inicial (Quando carrega a página)
     const checkUser = async () => {
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
@@ -61,15 +62,20 @@ const DreamApp = () => {
     };
     checkUser();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    // 2. Monitoramento de Eventos (Login, Logout, Refresh)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
         setUser(session?.user ?? null);
-        if (session) {
+        
+        // CORREÇÃO AQUI: Só redireciona se for um LOGIN explícito.
+        // Ignora 'TOKEN_REFRESHED' para não te expulsar do editor.
+        if (event === 'SIGNED_IN' && session) {
             fetchProjects(session.user.id);
-        } else {
+        } else if (event === 'SIGNED_OUT') {
             setView('login');
             setProjects([]);
         }
     });
+
     return () => subscription.unsubscribe();
   }, []);
 
@@ -191,8 +197,6 @@ const DreamApp = () => {
     setView('login');
   };
 
-  // --- COMPONENTE DE IDIOMAS REUTILIZÁVEL ---
-  // Removemos o 'absolute' padrão dele para podermos posicionar onde quisermos
   const LanguageSelector = ({ className = "" }) => (
     <div className={`relative flex flex-col items-end z-[100] ${className}`}>
         <button 
@@ -231,7 +235,6 @@ const DreamApp = () => {
     return (
         <div className="w-screen h-screen flex items-center justify-center font-inter relative overflow-hidden">
             <NeuralBackground />
-            {/* Aqui usamos absolute porque não tem header */}
             <LanguageSelector className="absolute top-6 right-6" />
             
             <div className="relative z-10 bg-[#05050a]/90 backdrop-blur-xl p-10 rounded-xl border border-white/10 shadow-2xl flex flex-col items-center">
@@ -258,7 +261,6 @@ const DreamApp = () => {
         <div className="w-screen h-screen text-white overflow-hidden font-inter relative flex flex-col">
             <NeuralBackground />
             
-            {/* Header Dashboard */}
             <div className="p-8 flex justify-between items-center border-b border-white/10 bg-black/50 backdrop-blur-md z-50 relative">
                 <div className="flex items-center gap-4">
                     <div className="w-10 h-10 bg-cyan-900/30 rounded-lg flex items-center justify-center border border-cyan-500/50">
@@ -282,7 +284,6 @@ const DreamApp = () => {
                         </span>
                      </div>
                      
-                     {/* Seletor no Header (sem absolute) */}
                      <LanguageSelector />
 
                      <button onClick={handleLogout} className="text-red-500 hover:text-white transition-colors"><LogOut size={20}/></button>
@@ -321,7 +322,7 @@ const DreamApp = () => {
     );
   }
 
-  // 3. EDITOR (A ÁRVORE)
+  // 3. EDITOR
   return (
     <div className="w-screen h-screen text-white overflow-hidden font-inter animate-in fade-in duration-500 relative">
       <NeuralBackground />
@@ -337,14 +338,11 @@ const DreamApp = () => {
         </div>
       </div>
 
-      {/* HEADER DIREITO DO EDITOR - AGORA COM O GLOBO */}
       <div className="absolute top-6 right-8 z-50 flex items-center gap-4">
-        {/* Status de Salvamento */}
         <div className="flex items-center gap-2 font-oxanium text-xs tracking-widest uppercase bg-black/50 px-3 py-1 rounded border border-white/5">
             {saveStatus === 'saving' ? (<><Loader2 size={12} className="text-cyan-400 animate-spin" /><span className="text-cyan-400">{t('syncing')}</span></>) : (<><Cloud size={14} className="text-gray-500" /><span className="text-gray-500">{t('saved')}</span></>)}
         </div>
 
-        {/* Aqui está o seletor no Editor */}
         <LanguageSelector />
       </div>
 
