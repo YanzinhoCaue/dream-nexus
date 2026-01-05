@@ -37,6 +37,8 @@ const DreamApp = () => {
   const [loading, setLoading] = useState(false);
   
   const [view, setView] = useState('login'); 
+  const viewRef = useRef('login'); // Ref para rastrear a tela atual e evitar redirects errados
+
   const [projects, setProjects] = useState([]); 
   const [currentProject, setCurrentProject] = useState(null); 
   
@@ -48,9 +50,11 @@ const DreamApp = () => {
   const saveTimeoutRef = useRef(null);
   const [langMenuOpen, setLangMenuOpen] = useState(false);
 
-  // --- SESSÃO E CORREÇÃO DO REDIRECIONAMENTO ---
+  // Sincroniza o Ref com o State (para usar dentro de listeners)
+  useEffect(() => { viewRef.current = view; }, [view]);
+
+  // --- SESSÃO E CORREÇÃO DO REDIRECT ---
   useEffect(() => {
-    // 1. Checagem Inicial (Quando carrega a página)
     const checkUser = async () => {
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
@@ -62,17 +66,19 @@ const DreamApp = () => {
     };
     checkUser();
 
-    // 2. Monitoramento de Eventos (Login, Logout, Refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
         setUser(session?.user ?? null);
         
-        // CORREÇÃO AQUI: Só redireciona se for um LOGIN explícito.
-        // Ignora 'TOKEN_REFRESHED' para não te expulsar do editor.
-        if (event === 'SIGNED_IN' && session) {
-            fetchProjects(session.user.id);
-        } else if (event === 'SIGNED_OUT') {
+        // CORREÇÃO CRÍTICA DO MINIMIZAR:
+        // Se o usuário deslogar, vai pro login.
+        if (event === 'SIGNED_OUT') {
             setView('login');
             setProjects([]);
+        } 
+        // Se logar explicitamente (ex: botão google), carrega projetos.
+        // MAS se for só um refresh de token (acontece ao minimizar/voltar), NÃO faz nada se já estivermos logados.
+        else if (event === 'SIGNED_IN' && viewRef.current === 'login') {
+            fetchProjects(session.user.id);
         }
     });
 
@@ -84,7 +90,7 @@ const DreamApp = () => {
     const { data } = await supabase.from('dream_trees').select('*').eq('user_id', userId).order('updated_at', { ascending: false });
     if (data) {
         setProjects(data);
-        setView('dashboard');
+        setView('dashboard'); // Só muda para dashboard aqui
     }
   };
 
@@ -139,15 +145,25 @@ const DreamApp = () => {
     return () => clearTimeout(saveTimeoutRef.current);
   }, [nodes, edges]);
 
-  // --- FLUXO DA ÁRVORE ---
+  // --- FLUXO DA ÁRVORE (AGORA COM DIREÇÃO) ---
   const onConnect = useCallback(
     (params) => setEdges((eds) => addEdge({ ...params, type: ConnectionLineType.SmoothStep, animated: true, style: { stroke: '#00E5FF', strokeWidth: 2 } }, eds)),
     [setEdges]
   );
 
-  const addNode = (parentId) => {
+  const addNode = (parentId, direction = 'DOWN') => {
     const parentNode = nodes.find(n => n.id === parentId);
-    const position = parentNode ? { x: parentNode.position.x, y: parentNode.position.y + 300 } : { x: 0, y: 0 };
+    
+    // Calcula posição baseada na direção escolhida
+    let position = { x: 0, y: 0 };
+    if (parentNode) {
+        const offset = 350; // Distância entre blocos
+        if (direction === 'DOWN') position = { x: parentNode.position.x, y: parentNode.position.y + offset };
+        if (direction === 'UP') position = { x: parentNode.position.x, y: parentNode.position.y - offset };
+        if (direction === 'RIGHT') position = { x: parentNode.position.x + offset, y: parentNode.position.y };
+        if (direction === 'LEFT') position = { x: parentNode.position.x - offset, y: parentNode.position.y };
+    }
+
     const newNodeId = `${Date.now()}`;
     const newNode = {
       id: newNodeId,
@@ -156,6 +172,7 @@ const DreamApp = () => {
       data: { label: 'NEW STEP', progress: 0 }
     };
     setNodes((nds) => [...nds, newNode]);
+    
     if (parentId) {
         setEdges((eds) => [...eds, { id: `e${parentId}-${newNodeId}`, source: parentId, target: newNodeId, type: 'smoothstep', animated: true, style: { stroke: '#00E5FF', strokeWidth: 2, strokeDasharray: '5,5' } }]);
     }
@@ -229,14 +246,12 @@ const DreamApp = () => {
   );
 
   // ================= RENDER =================
-
-  // 1. TELA DE LOGIN
+  // 1. LOGIN
   if (view === 'login') {
     return (
         <div className="w-screen h-screen flex items-center justify-center font-inter relative overflow-hidden">
             <NeuralBackground />
             <LanguageSelector className="absolute top-6 right-6" />
-            
             <div className="relative z-10 bg-[#05050a]/90 backdrop-blur-xl p-10 rounded-xl border border-white/10 shadow-2xl flex flex-col items-center">
                 <div className="mb-8 relative">
                     <div className="absolute inset-0 bg-cyan-500 blur-[30px] opacity-40 rounded-full"></div>
@@ -246,7 +261,6 @@ const DreamApp = () => {
                     DREAM <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500">NEXUS</span>
                 </h1>
                 <p className="text-cyan-600 text-xs tracking-[0.4em] font-bold mb-8 text-center uppercase">{t('login_title')}</p>
-
                 <button onClick={handleGoogleLogin} disabled={loading} className="px-8 py-3 bg-black border border-cyan-500 text-white hover:bg-cyan-950/50 hover:border-cyan-400 rounded-lg transition-all font-oxanium tracking-widest text-sm flex items-center gap-2">
                     {loading ? <Loader2 className="animate-spin" /> : t('login_btn')}
                 </button>
@@ -260,7 +274,6 @@ const DreamApp = () => {
     return (
         <div className="w-screen h-screen text-white overflow-hidden font-inter relative flex flex-col">
             <NeuralBackground />
-            
             <div className="p-8 flex justify-between items-center border-b border-white/10 bg-black/50 backdrop-blur-md z-50 relative">
                 <div className="flex items-center gap-4">
                     <div className="w-10 h-10 bg-cyan-900/30 rounded-lg flex items-center justify-center border border-cyan-500/50">
@@ -271,7 +284,6 @@ const DreamApp = () => {
                         <p className="text-xs text-gray-500 uppercase tracking-widest">{projects.length} {t('active_dreams')}</p>
                     </div>
                 </div>
-                
                 <div className="flex items-center gap-6">
                      <div className="flex items-center gap-3 bg-white/5 px-4 py-2 rounded-full border border-white/10 hover:border-cyan-500/50 transition-colors">
                         {user?.user_metadata?.avatar_url ? (
@@ -283,9 +295,7 @@ const DreamApp = () => {
                             {user?.user_metadata?.full_name || 'Dreamer'}
                         </span>
                      </div>
-                     
                      <LanguageSelector />
-
                      <button onClick={handleLogout} className="text-red-500 hover:text-white transition-colors"><LogOut size={20}/></button>
                 </div>
             </div>
@@ -342,13 +352,12 @@ const DreamApp = () => {
         <div className="flex items-center gap-2 font-oxanium text-xs tracking-widest uppercase bg-black/50 px-3 py-1 rounded border border-white/5">
             {saveStatus === 'saving' ? (<><Loader2 size={12} className="text-cyan-400 animate-spin" /><span className="text-cyan-400">{t('syncing')}</span></>) : (<><Cloud size={14} className="text-gray-500" /><span className="text-gray-500">{t('saved')}</span></>)}
         </div>
-
         <LanguageSelector />
       </div>
 
       {nodes.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none">
-              <button onClick={() => addNode(null)} className="pointer-events-auto bg-black/80 backdrop-blur border-2 border-dashed border-cyan-500/50 hover:border-cyan-400 text-cyan-400 hover:text-white px-10 py-6 rounded-2xl flex flex-col items-center gap-4 transition-all hover:scale-105 hover:shadow-[0_0_50px_rgba(0,229,255,0.2)]">
+              <button onClick={() => addNode(null, 'DOWN')} className="pointer-events-auto bg-black/80 backdrop-blur border-2 border-dashed border-cyan-500/50 hover:border-cyan-400 text-cyan-400 hover:text-white px-10 py-6 rounded-2xl flex flex-col items-center gap-4 transition-all hover:scale-105 hover:shadow-[0_0_50px_rgba(0,229,255,0.2)]">
                   <Plus size={40} /><span className="font-oxanium font-bold tracking-widest text-lg">{t('create_root')}</span>
               </button>
           </div>

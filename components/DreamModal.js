@@ -1,17 +1,34 @@
-import React, { useState, useRef } from 'react';
-import { X, CheckCircle, Circle, GripVertical, Trash2, ChevronUp, ChevronDown, Plus, Upload, Save, Loader2 } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { X, CheckCircle, Circle, GripVertical, Trash2, ChevronUp, ChevronDown, Plus, Upload, Save, Loader2, ClipboardCopy } from 'lucide-react';
 import { supabase } from './supabaseClient';
-import { useLanguage } from './LanguageContext'; // <--- Importamos o hook
+import { useLanguage } from './LanguageContext';
 
 const DreamModal = ({ isOpen, onClose, nodeData, onSave }) => {
   if (!isOpen || !nodeData) return null;
 
-  const { t } = useLanguage(); // <--- Usamos o tradutor
+  const { t } = useLanguage();
   const [title, setTitle] = useState(nodeData.label);
   const [steps, setSteps] = useState(nodeData.steps || []);
   const [imagePreview, setImagePreview] = useState(nodeData.image || '');
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef(null);
+
+  // --- ESCUTAR CTRL+V (PASTE) ---
+  useEffect(() => {
+    const handlePaste = (e) => {
+      const items = e.clipboardData.items;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          const blob = items[i].getAsFile();
+          handleFileUpload(blob); // Reusa a lógica de upload
+        }
+      }
+    };
+    
+    // Adiciona o evento apenas quando o modal está aberto
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, []); // Array vazio para ligar ao montar
 
   const addStep = () => {
     setSteps([...steps, { id: Date.now(), text: '', done: false }]);
@@ -27,13 +44,12 @@ const DreamModal = ({ isOpen, onClose, nodeData, onSave }) => {
     setSteps(newSteps);
   };
 
-  const handleImageUpload = async (e) => {
-    const file = e.target.files[0];
+  // Lógica unificada de Upload (funciona para Input e Paste)
+  const handleFileUpload = async (file) => {
     if (!file) return;
-
     try {
       setIsUploading(true);
-      const fileExt = file.name.split('.').pop();
+      const fileExt = file.name ? file.name.split('.').pop() : 'png';
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
       const filePath = `${fileName}`;
 
@@ -51,6 +67,10 @@ const DreamModal = ({ isOpen, onClose, nodeData, onSave }) => {
     }
   };
 
+  const handleInputUpload = (e) => {
+    handleFileUpload(e.target.files[0]);
+  }
+
   const handleSave = () => {
     if (isUploading) return;
     onSave({ ...nodeData, label: title, steps, image: imagePreview });
@@ -58,9 +78,10 @@ const DreamModal = ({ isOpen, onClose, nodeData, onSave }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-200">
       <div className="bg-[#05050a] w-full max-w-3xl h-[90vh] rounded-none border border-cyan-500/50 shadow-[0_0_100px_rgba(0,229,255,0.15)] flex flex-col overflow-hidden relative">
         
+        {/* Detalhes Visuais */}
         <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-cyan-500"></div>
         <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-cyan-500"></div>
         <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-cyan-500"></div>
@@ -69,7 +90,7 @@ const DreamModal = ({ isOpen, onClose, nodeData, onSave }) => {
         <div className="p-6 border-b border-cyan-900/50 flex justify-between items-center bg-cyan-950/10">
             <div className="flex items-center gap-3">
                 <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></div>
-                <span className="text-cyan-400 font-oxanium text-sm tracking-[0.2em] uppercase">System Configuration // {nodeData.id}</span>
+                <span className="text-cyan-400 font-oxanium text-sm tracking-[0.2em] uppercase">Configuration // {nodeData.id}</span>
             </div>
             <button onClick={onClose} className="text-gray-500 hover:text-red-500 transition-colors"><X /></button>
         </div>
@@ -77,7 +98,10 @@ const DreamModal = ({ isOpen, onClose, nodeData, onSave }) => {
         <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
             
             <div className="space-y-3">
-                <label className="text-xs text-cyan-600 uppercase tracking-widest font-bold">{t('visual_db')}</label>
+                <div className="flex justify-between items-end">
+                    <label className="text-xs text-cyan-600 uppercase tracking-widest font-bold">{t('visual_db')}</label>
+                    <span className="text-[10px] text-gray-500 flex items-center gap-1"><ClipboardCopy size={10}/> PASTE (CTRL+V) AVAILABLE</span>
+                </div>
                 
                 <div onClick={() => !isUploading && fileInputRef.current.click()} className={`relative w-full h-48 border-2 border-dashed ${isUploading ? 'border-cyan-500 bg-cyan-900/20 cursor-wait' : 'border-gray-700 hover:border-cyan-500 hover:bg-cyan-900/10 cursor-pointer'} rounded-lg transition-all flex flex-col items-center justify-center group overflow-hidden`}>
                     {isUploading ? (
@@ -96,9 +120,10 @@ const DreamModal = ({ isOpen, onClose, nodeData, onSave }) => {
                         <div className="flex flex-col items-center text-gray-500 group-hover:text-cyan-400 transition-colors">
                             <Upload size={32} className="mb-2" />
                             <span className="text-sm font-oxanium uppercase tracking-widest">{t('upload_system')}</span>
+                            <span className="text-[10px] mt-2 text-gray-600">OR PASTE IMAGE HERE</span>
                         </div>
                     )}
-                    <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" disabled={isUploading} />
+                    <input type="file" ref={fileInputRef} onChange={handleInputUpload} accept="image/*" className="hidden" disabled={isUploading} />
                 </div>
             </div>
 
