@@ -1,65 +1,335 @@
-import Image from "next/image";
+// @ts-nocheck
+'use client';
 
-export default function Home() {
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import ReactFlow, { 
+  Background, 
+  Controls, 
+  applyNodeChanges, 
+  addEdge,
+  ConnectionLineType,
+  useNodesState,
+  useEdgesState
+} from 'reactflow';
+import 'reactflow/dist/style.css';
+import { Lock, LogOut, Loader2, Cloud, Plus, ArrowLeft, Trash2, FolderOpen, LayoutGrid, User } from 'lucide-react';
+
+import DreamNode from '../components/DreamNode';
+import DreamModal from '../components/DreamModal';
+import NeuralBackground from '../components/NeuralBackground';
+import { supabase } from '../components/supabaseClient';
+
+const nodeTypes = { dreamNode: DreamNode };
+
+// Configuração padrão
+const defaultStartNode = [
+  { 
+    id: '1', 
+    type: 'dreamNode', 
+    position: { x: 0, y: 0 }, 
+    data: { label: 'MAIN GOAL', image: '', progress: 0 } 
+  },
+];
+
+export default function DreamSystem() {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(false);
+  
+  const [view, setView] = useState('login'); 
+  const [projects, setProjects] = useState([]); 
+  const [currentProject, setCurrentProject] = useState(null); 
+  
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [modalData, setModalData] = useState({ isOpen: false, node: null });
+  
+  const [saveStatus, setSaveStatus] = useState('saved'); 
+  const saveTimeoutRef = useRef(null);
+
+  // --- SESSÃO ---
+  useEffect(() => {
+    const checkUser = async () => {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+            setUser(session.user);
+            fetchProjects(session.user.id);
+        } else {
+            setView('login');
+        }
+    };
+    checkUser();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        setUser(session?.user ?? null);
+        if (session) {
+            fetchProjects(session.user.id);
+        } else {
+            setView('login');
+            setProjects([]);
+        }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // --- DASHBOARD ---
+  const fetchProjects = async (userId) => {
+    const { data } = await supabase.from('dream_trees').select('*').eq('user_id', userId).order('updated_at', { ascending: false });
+    if (data) {
+        setProjects(data);
+        setView('dashboard');
+    }
+  };
+
+  const createNewProject = async () => {
+    if (!user) return;
+    setLoading(true);
+    const newProject = { user_id: user.id, title: 'Untitled Dream', nodes: defaultStartNode, edges: [] };
+    const { data } = await supabase.from('dream_trees').insert(newProject).select().single();
+    if (data) {
+        setProjects([data, ...projects]);
+        openProject(data);
+    }
+    setLoading(false);
+  };
+
+  const deleteProject = async (e, projectId) => {
+    e.stopPropagation();
+    if(!confirm("Delete this dream forever?")) return;
+    await supabase.from('dream_trees').delete().eq('id', projectId);
+    setProjects(projects.filter(p => p.id !== projectId));
+  };
+
+  const openProject = (project) => {
+    setCurrentProject(project);
+    setNodes(project.nodes || []);
+    setEdges(project.edges || []);
+    setView('editor');
+  };
+
+  const exitEditor = async () => {
+    await forceSave();
+    fetchProjects(user.id); 
+    setView('dashboard');
+    setCurrentProject(null);
+  };
+
+  // --- EDITOR & AUTOSAVE ---
+  const forceSave = async () => {
+      if (!user || !currentProject) return;
+      setSaveStatus('saving');
+      const rootNode = nodes.find(n => n.id === '1' || nodes.length > 0);
+      const dynamicTitle = rootNode ? (rootNode.data.label || 'Untitled') : 'Empty Dream';
+      await supabase.from('dream_trees').update({ nodes: nodes, edges: edges, title: dynamicTitle, updated_at: new Date() }).eq('id', currentProject.id);
+      setSaveStatus('saved');
+  };
+
+  useEffect(() => {
+    if (view !== 'editor' || !currentProject) return;
+    setSaveStatus('saving');
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => { forceSave(); }, 2000);
+    return () => clearTimeout(saveTimeoutRef.current);
+  }, [nodes, edges]);
+
+  // --- FLUXO DA ÁRVORE ---
+  const onConnect = useCallback(
+    (params) => setEdges((eds) => addEdge({ ...params, type: ConnectionLineType.SmoothStep, animated: true, style: { stroke: '#00E5FF', strokeWidth: 2 } }, eds)),
+    [setEdges]
+  );
+
+  const addNode = (parentId) => {
+    const parentNode = nodes.find(n => n.id === parentId);
+    const position = parentNode ? { x: parentNode.position.x, y: parentNode.position.y + 300 } : { x: 0, y: 0 };
+    const newNodeId = `${Date.now()}`;
+    const newNode = {
+      id: newNodeId,
+      type: 'dreamNode',
+      position: position,
+      data: { label: 'NEW STEP', progress: 0 }
+    };
+    setNodes((nds) => [...nds, newNode]);
+    if (parentId) {
+        setEdges((eds) => [...eds, { id: `e${parentId}-${newNodeId}`, source: parentId, target: newNodeId, type: 'smoothstep', animated: true, style: { stroke: '#00E5FF', strokeWidth: 2, strokeDasharray: '5,5' } }]);
+    }
+  };
+
+  const deleteNode = (nodeId) => {
+    setNodes((nds) => nds.filter((n) => n.id !== nodeId));
+    setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
+  };
+
+  const nodesWithFunctions = nodes.map(n => ({
+    ...n,
+    data: { ...n.data, onAdd: addNode, onDelete: deleteNode, onNodeClick: () => setModalData({ isOpen: true, node: n }) }
+  }));
+
+  const onSaveModal = (updatedData) => {
+    setNodes((nds) => nds.map((n) => {
+        if (n.id === modalData.node.id) {
+            const total = updatedData.steps.length;
+            const done = updatedData.steps.filter(s => s.done).length;
+            const progress = total === 0 ? 0 : Math.round((done / total) * 100);
+            return { ...n, data: { ...updatedData, progress } };
+        }
+        return n;
+    }));
+  };
+
+  // --- LOGIN ---
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { queryParams: { access_type: 'offline', prompt: 'consent' } },
+    });
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setView('login');
+  };
+
+  // ================= RENDER =================
+
+  // 1. TELA DE LOGIN
+  if (view === 'login') {
+    return (
+        // REMOVIDO bg-black AQUI
+        <div className="w-screen h-screen flex items-center justify-center font-inter relative overflow-hidden">
+            <NeuralBackground />
+            <div className="relative z-10 bg-[#05050a]/90 backdrop-blur-xl p-10 rounded-xl border border-white/10 shadow-2xl flex flex-col items-center">
+                <div className="mb-8 relative">
+                    <div className="absolute inset-0 bg-cyan-500 blur-[30px] opacity-40 rounded-full"></div>
+                    <Lock size={40} className="text-cyan-400 relative z-10" />
+                </div>
+                <h1 className="text-5xl font-oxanium font-bold text-white mb-8 tracking-wider drop-shadow-[0_0_10px_rgba(0,229,255,0.8)]">
+                    DREAM <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500">NEXUS</span>
+                </h1>
+                <button onClick={handleGoogleLogin} disabled={loading} className="px-8 py-3 bg-black border border-cyan-500 text-white hover:bg-cyan-950/50 hover:border-cyan-400 rounded-lg transition-all font-oxanium tracking-widest text-sm flex items-center gap-2">
+                    {loading ? <Loader2 className="animate-spin" /> : "ACCESS SYSTEM"}
+                </button>
+            </div>
+        </div>
+    );
+  }
+
+  // 2. DASHBOARD
+  if (view === 'dashboard') {
+    return (
+        // REMOVIDO bg-black AQUI
+        <div className="w-screen h-screen text-white overflow-hidden font-inter relative flex flex-col">
+            <NeuralBackground />
+            
+            {/* Header Dashboard */}
+            <div className="p-8 flex justify-between items-center border-b border-white/10 bg-black/50 backdrop-blur-md z-10">
+                <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-cyan-900/30 rounded-lg flex items-center justify-center border border-cyan-500/50">
+                        <LayoutGrid className="text-cyan-400" />
+                    </div>
+                    <div>
+                        <h2 className="font-oxanium text-2xl font-bold tracking-wide">MY PROJECTS</h2>
+                        <p className="text-xs text-gray-500 uppercase tracking-widest">{projects.length} Dreams Active</p>
+                    </div>
+                </div>
+                
+                <div className="flex items-center gap-6">
+                     <div className="flex items-center gap-3 bg-white/5 px-4 py-2 rounded-full border border-white/10 hover:border-cyan-500/50 transition-colors">
+                        {user?.user_metadata?.avatar_url ? (
+                            <img src={user.user_metadata.avatar_url} className="w-8 h-8 rounded-full border border-green-500" />
+                        ) : (
+                            <div className="w-8 h-8 rounded-full border border-green-500 bg-green-900/20 flex items-center justify-center"><User size={16}/></div>
+                        )}
+                        <span className="text-sm font-bold text-gray-300 font-oxanium uppercase tracking-wider">
+                            {user?.user_metadata?.full_name || 'Dreamer'}
+                        </span>
+                     </div>
+                     <button onClick={handleLogout} className="text-red-500 hover:text-white transition-colors"><LogOut size={20}/></button>
+                </div>
+            </div>
+
+            {/* Grid de Projetos */}
+            <div className="flex-1 overflow-y-auto p-10 z-10 custom-scrollbar">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl mx-auto">
+                    <button onClick={createNewProject} disabled={loading} className="group h-64 border-2 border-dashed border-gray-800 hover:border-cyan-500 rounded-xl flex flex-col items-center justify-center gap-4 hover:bg-cyan-950/10 transition-all">
+                        <div className="w-16 h-16 rounded-full bg-gray-900 group-hover:bg-cyan-500 flex items-center justify-center transition-colors">
+                            <Plus size={32} className="text-gray-500 group-hover:text-black" />
+                        </div>
+                        <span className="font-oxanium font-bold text-gray-500 group-hover:text-cyan-400 tracking-widest">CREATE NEW DREAM</span>
+                    </button>
+
+                    {projects.map((proj) => (
+                        <div key={proj.id} onClick={() => openProject(proj)} className="group h-64 bg-gray-900/50 border border-white/5 hover:border-cyan-500 rounded-xl relative overflow-hidden cursor-pointer transition-all hover:shadow-[0_0_30px_rgba(0,229,255,0.15)] flex flex-col">
+                            <div className="flex-1 bg-black/50 relative">
+                                {proj.nodes?.[0]?.data?.image ? (
+                                    <img src={proj.nodes[0].data.image} className="w-full h-full object-cover opacity-50 group-hover:opacity-80 transition-opacity" />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-gray-700 group-hover:text-cyan-900/50"><FolderOpen size={48} /></div>
+                                )}
+                                <div className="absolute inset-0 bg-gradient-to-t from-gray-900 to-transparent"></div>
+                            </div>
+                            <div className="p-5 relative">
+                                <h3 className="font-oxanium font-bold text-lg truncate text-white group-hover:text-cyan-400 transition-colors">{proj.title || 'Untitled Dream'}</h3>
+                                <p className="text-xs text-gray-500 mt-1">{new Date(proj.updated_at).toLocaleDateString()}</p>
+                                <button onClick={(e) => deleteProject(e, proj.id)} className="absolute bottom-5 right-5 text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={18} /></button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+  }
+
+  // 3. EDITOR
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    // REMOVIDO bg-black AQUI
+    <div className="w-screen h-screen text-white overflow-hidden font-inter animate-in fade-in duration-500 relative">
+      <NeuralBackground />
+
+      <div className="absolute top-6 left-8 z-10 flex items-center gap-6">
+        <button onClick={exitEditor} className="w-10 h-10 rounded-full bg-black/50 border border-white/10 hover:border-cyan-500 text-gray-400 hover:text-cyan-400 flex items-center justify-center transition-all"><ArrowLeft size={20} /></button>
+        <div>
+            <h1 className="text-2xl font-oxanium font-bold text-white drop-shadow-[0_0_10px_#00E5FF]">{currentProject?.title || 'DREAM NEXUS'}</h1>
+            <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+                <p className="text-cyan-700 text-[10px] tracking-[0.3em] font-bold">EDITOR ACTIVE</p>
+            </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </div>
+
+      <div className="absolute top-6 right-8 z-10 flex items-center gap-4">
+        <div className="flex items-center gap-2 font-oxanium text-xs tracking-widest uppercase bg-black/50 px-3 py-1 rounded border border-white/5">
+            {saveStatus === 'saving' ? (<><Loader2 size={12} className="text-cyan-400 animate-spin" /><span className="text-cyan-400">Syncing...</span></>) : (<><Cloud size={14} className="text-gray-500" /><span className="text-gray-500">Saved</span></>)}
         </div>
-      </main>
+      </div>
+
+      {nodes.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none">
+              <button onClick={() => addNode(null)} className="pointer-events-auto bg-black/80 backdrop-blur border-2 border-dashed border-cyan-500/50 hover:border-cyan-400 text-cyan-400 hover:text-white px-10 py-6 rounded-2xl flex flex-col items-center gap-4 transition-all hover:scale-105 hover:shadow-[0_0_50px_rgba(0,229,255,0.2)]">
+                  <Plus size={40} /><span className="font-oxanium font-bold tracking-widest text-lg">CREATE ROOT NODE</span>
+              </button>
+          </div>
+      )}
+
+      <ReactFlow
+        nodes={nodesWithFunctions}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        nodeTypes={nodeTypes}
+        fitView
+        className="bg-transparent"
+        minZoom={0.1}
+      >
+        <Background color="#000" gap={30} size={1} style={{opacity: 0.1}} />
+        <Controls className="!bg-black !border-cyan-900 !m-4 !rounded-lg overflow-hidden" showInteractive={false} />
+      </ReactFlow>
+
+      {modalData.isOpen && modalData.node && (
+        <DreamModal isOpen={modalData.isOpen} nodeData={modalData.node.data} onClose={() => setModalData({ ...modalData, isOpen: false })} onSave={onSaveModal} />
+      )}
     </div>
   );
 }
