@@ -3,14 +3,22 @@ import { Handle, Position } from 'reactflow';
 import { Plus, X, Image as ImageIcon, Zap } from 'lucide-react';
 
 const DreamNode = ({ data, id }) => {
-  // Função auxiliar para os botões de direção
+  
+  // Função auxiliar para os botões
   const AddButton = ({ positionClass, direction }) => (
     <button 
+      className={`nodrag absolute ${positionClass} bg-black border border-cyan-500/50 text-cyan-500 p-1 rounded-full shadow-[0_0_10px_rgba(0,229,255,0.2)] hover:bg-cyan-500 hover:text-black hover:scale-110 transition-all z-50 opacity-0 group-hover:opacity-100 cursor-pointer`}
       onClick={(e) => {
-        e.stopPropagation();
-        data.onAdd(id, direction);
+        e.stopPropagation(); // Impede que o clique passe para o card
+        e.preventDefault();
+        console.log(`Botão ${direction} clicado no nó ${id}`); // Debug no console
+        
+        if (data.onAdd) {
+            data.onAdd(id, direction);
+        } else {
+            console.error('ERRO: Função onAdd não foi passada para este nó!');
+        }
       }}
-      className={`absolute ${positionClass} bg-black border border-cyan-500/50 text-cyan-500 p-1 rounded-full shadow-[0_0_10px_rgba(0,229,255,0.2)] hover:bg-cyan-500 hover:text-black hover:scale-110 transition-all z-50 opacity-0 group-hover:opacity-100`}
       title={`Add ${direction}`}
     >
       <Plus size={14} />
@@ -19,19 +27,19 @@ const DreamNode = ({ data, id }) => {
 
   return (
     <div className="relative group">
-      {/* Conectores (Handles) Invisíveis */}
+      {/* Handles (Conectores) */}
       <Handle type="target" position={Position.Top} className="!bg-cyan-400 !w-2 !h-2 !border-0 opacity-0" />
       <Handle type="source" position={Position.Bottom} className="!bg-cyan-400 !w-2 !h-2 !border-0 opacity-0" />
       <Handle type="target" position={Position.Left} className="!bg-cyan-400 !w-2 !h-2 !border-0 opacity-0" />
       <Handle type="source" position={Position.Right} className="!bg-cyan-400 !w-2 !h-2 !border-0 opacity-0" />
 
-      {/* BOTÕES DIRECIONAIS (Aparecem no Hover) */}
+      {/* BOTÕES COM A CLASSE NODRAG (CORREÇÃO AQUI) */}
       <AddButton positionClass="-top-4 left-1/2 -translate-x-1/2" direction="UP" />
       <AddButton positionClass="-bottom-4 left-1/2 -translate-x-1/2" direction="DOWN" />
       <AddButton positionClass="-left-4 top-1/2 -translate-y-1/2" direction="LEFT" />
       <AddButton positionClass="-right-4 top-1/2 -translate-y-1/2" direction="RIGHT" />
 
-      {/* O Card do Sonho */}
+      {/* Card Principal */}
       <div 
         className="w-72 bg-black/90 backdrop-blur-xl border border-cyan-500/30 rounded-lg overflow-hidden transition-all duration-300
                    hover:border-cyan-400 hover:shadow-[0_0_30px_rgba(0,229,255,0.3)] group-hover:z-40 cursor-move
@@ -52,11 +60,11 @@ const DreamNode = ({ data, id }) => {
           )}
           
           <button 
+            className="nodrag absolute top-2 right-2 bg-red-500/20 hover:bg-red-600 border border-red-500 text-red-100 p-1.5 rounded opacity-0 group-hover:opacity-100 transition-all z-20 cursor-pointer"
             onClick={(e) => {
               e.stopPropagation();
               data.onDelete(id);
             }}
-            className="absolute top-2 right-2 bg-red-500/20 hover:bg-red-600 border border-red-500 text-red-100 p-1.5 rounded opacity-0 group-hover:opacity-100 transition-all z-20"
           >
             <X size={14} />
           </button>
