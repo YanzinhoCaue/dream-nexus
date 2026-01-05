@@ -9,7 +9,9 @@ import ReactFlow, {
   addEdge,
   ConnectionLineType,
   useNodesState,
-  useEdgesState
+  useEdgesState,
+  ReactFlowProvider, // <--- IMPORTANTE
+  useReactFlow       // <--- IMPORTANTE
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { Lock, LogOut, Loader2, Cloud, Plus, ArrowLeft, Trash2, FolderOpen, LayoutGrid, User, Globe } from 'lucide-react';
@@ -33,11 +35,13 @@ const defaultStartNode = [
 
 const DreamApp = () => {
   const { t, lang, setLang } = useLanguage();
+  const { getNode } = useReactFlow(); // <--- O SEGREDO: Pega o nó direto da fonte
+  
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
   
   const [view, setView] = useState('login'); 
-  const viewRef = useRef('login'); // Ref para rastrear a tela atual e evitar redirects errados
+  const viewRef = useRef('login');
 
   const [projects, setProjects] = useState([]); 
   const [currentProject, setCurrentProject] = useState(null); 
@@ -50,10 +54,9 @@ const DreamApp = () => {
   const saveTimeoutRef = useRef(null);
   const [langMenuOpen, setLangMenuOpen] = useState(false);
 
-  // Sincroniza o Ref com o State (para usar dentro de listeners)
   useEffect(() => { viewRef.current = view; }, [view]);
 
-  // --- SESSÃO E CORREÇÃO DO REDIRECT ---
+  // --- SESSÃO ---
   useEffect(() => {
     const checkUser = async () => {
         const { data: { session } } = await supabase.auth.getSession();
@@ -68,16 +71,10 @@ const DreamApp = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
         setUser(session?.user ?? null);
-        
-        // CORREÇÃO CRÍTICA DO MINIMIZAR:
-        // Se o usuário deslogar, vai pro login.
         if (event === 'SIGNED_OUT') {
             setView('login');
             setProjects([]);
-        } 
-        // Se logar explicitamente (ex: botão google), carrega projetos.
-        // MAS se for só um refresh de token (acontece ao minimizar/voltar), NÃO faz nada se já estivermos logados.
-        else if (event === 'SIGNED_IN' && viewRef.current === 'login') {
+        } else if (event === 'SIGNED_IN' && viewRef.current === 'login') {
             fetchProjects(session.user.id);
         }
     });
@@ -90,7 +87,7 @@ const DreamApp = () => {
     const { data } = await supabase.from('dream_trees').select('*').eq('user_id', userId).order('updated_at', { ascending: false });
     if (data) {
         setProjects(data);
-        setView('dashboard'); // Só muda para dashboard aqui
+        setView('dashboard');
     }
   };
 
@@ -145,19 +142,25 @@ const DreamApp = () => {
     return () => clearTimeout(saveTimeoutRef.current);
   }, [nodes, edges]);
 
-  // --- FLUXO DA ÁRVORE (AGORA COM DIREÇÃO) ---
+  // --- LÓGICA DE CRIAR BLOCOS (CORRIGIDA) ---
   const onConnect = useCallback(
     (params) => setEdges((eds) => addEdge({ ...params, type: ConnectionLineType.SmoothStep, animated: true, style: { stroke: '#00E5FF', strokeWidth: 2 } }, eds)),
     [setEdges]
   );
 
-  const addNode = (parentId, direction = 'DOWN') => {
-    const parentNode = nodes.find(n => n.id === parentId);
+  const addNode = useCallback((parentId, direction = 'DOWN') => {
+    // CORREÇÃO: Usamos getNode() em vez de procurar no estado 'nodes' que podia estar velho
+    const parentNode = getNode(parentId);
     
-    // Calcula posição baseada na direção escolhida
+    if (!parentNode && parentId !== null) {
+        console.error("Parent node not found:", parentId);
+        return;
+    }
+    
+    // Calcula posição
     let position = { x: 0, y: 0 };
     if (parentNode) {
-        const offset = 350; // Distância entre blocos
+        const offset = 350;
         if (direction === 'DOWN') position = { x: parentNode.position.x, y: parentNode.position.y + offset };
         if (direction === 'UP') position = { x: parentNode.position.x, y: parentNode.position.y - offset };
         if (direction === 'RIGHT') position = { x: parentNode.position.x + offset, y: parentNode.position.y };
@@ -171,18 +174,27 @@ const DreamApp = () => {
       position: position,
       data: { label: 'NEW STEP', progress: 0 }
     };
+
     setNodes((nds) => [...nds, newNode]);
     
     if (parentId) {
-        setEdges((eds) => [...eds, { id: `e${parentId}-${newNodeId}`, source: parentId, target: newNodeId, type: 'smoothstep', animated: true, style: { stroke: '#00E5FF', strokeWidth: 2, strokeDasharray: '5,5' } }]);
+        setEdges((eds) => [...eds, { 
+            id: `e${parentId}-${newNodeId}`, 
+            source: parentId, 
+            target: newNodeId, 
+            type: 'smoothstep', 
+            animated: true, 
+            style: { stroke: '#00E5FF', strokeWidth: 2, strokeDasharray: '5,5' } 
+        }]);
     }
-  };
+  }, [getNode, setNodes, setEdges]); // Dependências corretas
 
-  const deleteNode = (nodeId) => {
+  const deleteNode = useCallback((nodeId) => {
     setNodes((nds) => nds.filter((n) => n.id !== nodeId));
     setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
-  };
+  }, [setNodes, setEdges]);
 
+  // Injeção de funções nos nós
   const nodesWithFunctions = nodes.map(n => ({
     ...n,
     data: { ...n.data, onAdd: addNode, onDelete: deleteNode, onNodeClick: () => setModalData({ isOpen: true, node: n }) }
@@ -222,21 +234,10 @@ const DreamApp = () => {
         >
             <Globe size={20} />
         </button>
-        
         {langMenuOpen && (
             <div className="absolute top-12 right-0 bg-black/90 border border-cyan-500/30 rounded-lg p-2 flex flex-col gap-1 backdrop-blur-md animate-in fade-in slide-in-from-top-2 w-32 shadow-xl">
-                {[
-                    { code: 'en', label: 'English' },
-                    { code: 'pt', label: 'Português' },
-                    { code: 'es', label: 'Español' },
-                    { code: 'cn', label: '中文' },
-                    { code: 'jp', label: '日本語' }
-                ].map((l) => (
-                    <button
-                        key={l.code}
-                        onClick={() => { setLang(l.code); setLangMenuOpen(false); }}
-                        className={`text-left px-3 py-2 text-xs font-oxanium tracking-wider hover:bg-cyan-500/20 rounded transition-colors cursor-pointer ${lang === l.code ? 'text-cyan-400 font-bold' : 'text-gray-400'}`}
-                    >
+                {[{ code: 'en', label: 'English' }, { code: 'pt', label: 'Português' }, { code: 'es', label: 'Español' }, { code: 'cn', label: '中文' }, { code: 'jp', label: '日本語' }].map((l) => (
+                    <button key={l.code} onClick={() => { setLang(l.code); setLangMenuOpen(false); }} className={`text-left px-3 py-2 text-xs font-oxanium tracking-wider hover:bg-cyan-500/20 rounded transition-colors cursor-pointer ${lang === l.code ? 'text-cyan-400 font-bold' : 'text-gray-400'}`}>
                         {l.label}
                     </button>
                 ))}
@@ -246,7 +247,6 @@ const DreamApp = () => {
   );
 
   // ================= RENDER =================
-  // 1. LOGIN
   if (view === 'login') {
     return (
         <div className="w-screen h-screen flex items-center justify-center font-inter relative overflow-hidden">
@@ -269,7 +269,6 @@ const DreamApp = () => {
     );
   }
 
-  // 2. DASHBOARD
   if (view === 'dashboard') {
     return (
         <div className="w-screen h-screen text-white overflow-hidden font-inter relative flex flex-col">
@@ -385,10 +384,13 @@ const DreamApp = () => {
   );
 };
 
+// --- WRAPPER OBRIGATÓRIO ---
 export default function DreamSystem() {
   return (
-    <LanguageProvider>
-      <DreamApp />
-    </LanguageProvider>
+    <ReactFlowProvider>
+      <LanguageProvider>
+        <DreamApp />
+      </LanguageProvider>
+    </ReactFlowProvider>
   );
 }
