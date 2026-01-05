@@ -191,17 +191,19 @@ const DreamApp = () => {
     setView('login');
   };
 
-  const LanguageSelector = () => (
-    <div className="absolute top-6 right-6 z-[100] flex flex-col items-end">
+  // --- COMPONENTE DE IDIOMAS REUTILIZÁVEL ---
+  // Removemos o 'absolute' padrão dele para podermos posicionar onde quisermos
+  const LanguageSelector = ({ className = "" }) => (
+    <div className={`relative flex flex-col items-end z-[100] ${className}`}>
         <button 
             onClick={() => setLangMenuOpen(!langMenuOpen)}
-            className="w-10 h-10 rounded-full bg-black/50 border border-cyan-500/30 hover:border-cyan-400 text-cyan-400 flex items-center justify-center transition-all hover:shadow-[0_0_15px_rgba(0,229,255,0.3)] z-[100]"
+            className="w-10 h-10 rounded-full bg-black/50 border border-cyan-500/30 hover:border-cyan-400 text-cyan-400 flex items-center justify-center transition-all hover:shadow-[0_0_15px_rgba(0,229,255,0.3)]"
         >
             <Globe size={20} />
         </button>
         
         {langMenuOpen && (
-            <div className="mt-2 bg-black/90 border border-cyan-500/30 rounded-lg p-2 flex flex-col gap-1 backdrop-blur-md animate-in fade-in slide-in-from-top-2 w-32 shadow-xl z-[100]">
+            <div className="absolute top-12 right-0 bg-black/90 border border-cyan-500/30 rounded-lg p-2 flex flex-col gap-1 backdrop-blur-md animate-in fade-in slide-in-from-top-2 w-32 shadow-xl">
                 {[
                     { code: 'en', label: 'English' },
                     { code: 'pt', label: 'Português' },
@@ -212,7 +214,7 @@ const DreamApp = () => {
                     <button
                         key={l.code}
                         onClick={() => { setLang(l.code); setLangMenuOpen(false); }}
-                        className={`text-left px-3 py-2 text-xs font-oxanium tracking-wider hover:bg-cyan-500/20 rounded transition-colors cursor-pointer relative z-[101] ${lang === l.code ? 'text-cyan-400 font-bold' : 'text-gray-400'}`}
+                        className={`text-left px-3 py-2 text-xs font-oxanium tracking-wider hover:bg-cyan-500/20 rounded transition-colors cursor-pointer ${lang === l.code ? 'text-cyan-400 font-bold' : 'text-gray-400'}`}
                     >
                         {l.label}
                     </button>
@@ -229,7 +231,8 @@ const DreamApp = () => {
     return (
         <div className="w-screen h-screen flex items-center justify-center font-inter relative overflow-hidden">
             <NeuralBackground />
-            <LanguageSelector />
+            {/* Aqui usamos absolute porque não tem header */}
+            <LanguageSelector className="absolute top-6 right-6" />
             
             <div className="relative z-10 bg-[#05050a]/90 backdrop-blur-xl p-10 rounded-xl border border-white/10 shadow-2xl flex flex-col items-center">
                 <div className="mb-8 relative">
@@ -255,7 +258,7 @@ const DreamApp = () => {
         <div className="w-screen h-screen text-white overflow-hidden font-inter relative flex flex-col">
             <NeuralBackground />
             
-            {/* Header Dashboard - CORREÇÃO: z-50 para ficar ACIMA da lista de projetos */}
+            {/* Header Dashboard */}
             <div className="p-8 flex justify-between items-center border-b border-white/10 bg-black/50 backdrop-blur-md z-50 relative">
                 <div className="flex items-center gap-4">
                     <div className="w-10 h-10 bg-cyan-900/30 rounded-lg flex items-center justify-center border border-cyan-500/50">
@@ -279,16 +282,8 @@ const DreamApp = () => {
                         </span>
                      </div>
                      
-                     <div className="relative">
-                        <button onClick={() => setLangMenuOpen(!langMenuOpen)} className="text-gray-400 hover:text-cyan-400 transition-colors"><Globe size={20}/></button>
-                        {langMenuOpen && (
-                            <div className="absolute right-0 top-8 bg-black/90 border border-cyan-500/30 rounded-lg p-2 flex flex-col gap-1 w-32 shadow-xl z-[100]">
-                                {[ { code: 'en', label: 'English' }, { code: 'pt', label: 'Português' }, { code: 'es', label: 'Español' }, { code: 'cn', label: '中文' }, { code: 'jp', label: '日本語' } ].map(l => (
-                                    <button key={l.code} onClick={() => { setLang(l.code); setLangMenuOpen(false); }} className={`text-left px-3 py-2 text-xs hover:bg-cyan-500/20 rounded cursor-pointer relative z-[101] ${lang === l.code ? 'text-cyan-400 font-bold' : 'text-gray-400'}`}>{l.label}</button>
-                                ))}
-                            </div>
-                        )}
-                     </div>
+                     {/* Seletor no Header (sem absolute) */}
+                     <LanguageSelector />
 
                      <button onClick={handleLogout} className="text-red-500 hover:text-white transition-colors"><LogOut size={20}/></button>
                 </div>
@@ -326,7 +321,7 @@ const DreamApp = () => {
     );
   }
 
-  // 3. EDITOR
+  // 3. EDITOR (A ÁRVORE)
   return (
     <div className="w-screen h-screen text-white overflow-hidden font-inter animate-in fade-in duration-500 relative">
       <NeuralBackground />
@@ -342,10 +337,15 @@ const DreamApp = () => {
         </div>
       </div>
 
-      <div className="absolute top-6 right-8 z-10 flex items-center gap-4">
+      {/* HEADER DIREITO DO EDITOR - AGORA COM O GLOBO */}
+      <div className="absolute top-6 right-8 z-50 flex items-center gap-4">
+        {/* Status de Salvamento */}
         <div className="flex items-center gap-2 font-oxanium text-xs tracking-widest uppercase bg-black/50 px-3 py-1 rounded border border-white/5">
             {saveStatus === 'saving' ? (<><Loader2 size={12} className="text-cyan-400 animate-spin" /><span className="text-cyan-400">{t('syncing')}</span></>) : (<><Cloud size={14} className="text-gray-500" /><span className="text-gray-500">{t('saved')}</span></>)}
         </div>
+
+        {/* Aqui está o seletor no Editor */}
+        <LanguageSelector />
       </div>
 
       {nodes.length === 0 && (
