@@ -18,7 +18,7 @@ import { Lock, LogOut, Loader2, Cloud, Plus, ArrowLeft, Trash2, FolderOpen, Layo
 
 import DreamNode from '../components/DreamNode';
 import DreamModal from '../components/DreamModal';
-import DeleteConfirmationModal from '../components/DeleteConfirmationModal'; // <--- IMPORT NOVO
+import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 import NeuralBackground from '../components/NeuralBackground';
 import { supabase } from '../components/supabaseClient';
 import { LanguageProvider, useLanguage } from '../components/LanguageContext';
@@ -31,7 +31,8 @@ const defaultStartNode = [
 
 const DreamApp = () => {
   const { t, lang, setLang } = useLanguage();
-  const { getNode } = useReactFlow(); 
+  // Importante: getEdges e getNodes pegam o estado MAIS ATUAL, corrigindo o erro de conexão
+  const { getNode, getEdges, getNodes } = useReactFlow(); 
   
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -46,10 +47,9 @@ const DreamApp = () => {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [modalData, setModalData] = useState({ isOpen: false, node: null });
   
-  // MODAL DE DELETE SEGURO
+  // MODAIS
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, projectId: null, projectTitle: '' });
-  // EDIÇÃO DE NOME NO DASHBOARD
-  const [editingProject, setEditingProject] = useState(null); // ID do projeto sendo editado
+  const [editingProject, setEditingProject] = useState(null);
   const [editName, setEditName] = useState('');
 
   const [saveStatus, setSaveStatus] = useState('saved'); 
@@ -105,9 +105,10 @@ const DreamApp = () => {
     setLoading(false);
   };
 
-  // --- DELETE SEGURO DE PROJETO ---
+  // --- DELETE DE PROJETO (FIX: Botão visível + Modal) ---
   const requestDeleteProject = (e, project) => {
-    e.stopPropagation();
+    e.stopPropagation(); // Impede de abrir o projeto ao clicar na lixeira
+    e.preventDefault();
     setDeleteModal({ isOpen: true, projectId: project.id, projectTitle: project.title || 'Untitled Dream' });
   };
 
@@ -118,7 +119,6 @@ const DreamApp = () => {
     setDeleteModal({ isOpen: false, projectId: null, projectTitle: '' });
   };
 
-  // --- RENOMEAR PROJETO NO DASHBOARD ---
   const startEditingProject = (e, project) => {
     e.stopPropagation();
     setEditingProject(project.id);
@@ -128,11 +128,7 @@ const DreamApp = () => {
   const saveProjectName = async (e) => {
     e.stopPropagation();
     if (!editingProject) return;
-
-    // Atualiza no banco
     await supabase.from('dream_trees').update({ title: editName }).eq('id', editingProject);
-    
-    // Atualiza na tela
     setProjects(projects.map(p => p.id === editingProject ? { ...p, title: editName } : p));
     setEditingProject(null);
   };
@@ -154,7 +150,6 @@ const DreamApp = () => {
   const forceSave = async () => {
       if (!user || !currentProject) return;
       setSaveStatus('saving');
-      // O título não atualiza automaticamente mais pelo nó raiz, agora é fixo pelo nome do projeto
       await supabase.from('dream_trees').update({ nodes: nodes, edges: edges, updated_at: new Date() }).eq('id', currentProject.id);
       setSaveStatus('saved');
   };
@@ -167,15 +162,15 @@ const DreamApp = () => {
     return () => clearTimeout(saveTimeoutRef.current);
   }, [nodes, edges]);
 
-  // --- LÓGICA DE NÓS ---
+  // --- LÓGICA DE CONEXÃO ---
   const onConnect = useCallback(
     (params) => setEdges((eds) => addEdge({ ...params, type: ConnectionLineType.SmoothStep, animated: true, style: { stroke: '#00E5FF', strokeWidth: 2 } }, eds)),
     [setEdges]
   );
 
+  // --- ADICIONAR NOVO BLOCO ---
   const addNode = useCallback((parentId, direction = 'DOWN') => {
     const parentNode = getNode(parentId) || nodes.find(n => n.id === parentId);
-    
     if (!parentNode && parentId !== null) return;
     
     let position = { x: 0, y: 0 };
@@ -209,18 +204,21 @@ const DreamApp = () => {
     }
   }, [getNode, nodes, setNodes, setEdges]); 
 
-  // --- SMART DELETE (CORRIGIDO PARA RECONECTAR) ---
+  // --- SMART DELETE (FIX REAL: USA getEdges()) ---
   const deleteNode = useCallback((nodeId) => {
-    // 1. Achar conexões chegando (Pais) e saindo (Filhos)
-    const incomingEdges = edges.filter(e => e.target === nodeId);
-    const outgoingEdges = edges.filter(e => e.source === nodeId);
+    // 1. Pega as arestas ATUAIS direto da fonte (não usa state antigo)
+    const currentEdges = getEdges(); 
 
-    // 2. Criar novas conexões (Ligar cada Pai a cada Filho)
-    const newEdges = [];
+    // 2. Acha quem entra (pais) e quem sai (filhos) do nó que será deletado
+    const incomingEdges = currentEdges.filter(e => e.target === nodeId);
+    const outgoingEdges = currentEdges.filter(e => e.source === nodeId);
+
+    // 3. Cria as novas arestas de ponte
+    const bridgeEdges = [];
     incomingEdges.forEach(inEdge => {
         outgoingEdges.forEach(outEdge => {
-            newEdges.push({
-                id: `e${inEdge.source}-${outEdge.target}`,
+            bridgeEdges.push({
+                id: `e${inEdge.source}-${outEdge.target}-${Date.now()}`, // ID único
                 source: inEdge.source,
                 target: outEdge.target,
                 type: 'smoothstep',
@@ -230,15 +228,16 @@ const DreamApp = () => {
         });
     });
 
-    // 3. Atualizar Estado
+    // 4. Atualiza os nós (remove o deletado)
     setNodes((nds) => nds.filter((n) => n.id !== nodeId));
+
+    // 5. Atualiza as arestas (remove as ligadas ao deletado + adiciona as pontes)
     setEdges((eds) => {
-        // Remove as arestas velhas que ligavam ao nó deletado
-        const filtered = eds.filter((e) => e.source !== nodeId && e.target !== nodeId);
-        // Adiciona as novas arestas de ponte
-        return [...filtered, ...newEdges];
+        const remainingEdges = eds.filter((e) => e.source !== nodeId && e.target !== nodeId);
+        return [...remainingEdges, ...bridgeEdges];
     });
-  }, [nodes, edges, setNodes, setEdges]);
+
+  }, [getEdges, setNodes, setEdges]);
 
   const nodesWithFunctions = nodes.map(n => ({
     ...n,
@@ -314,7 +313,7 @@ const DreamApp = () => {
         <div className="w-screen h-screen text-white overflow-hidden font-inter relative flex flex-col">
             <NeuralBackground />
             
-            {/* Modal de Delete */}
+            {/* Modal de Delete (SEGURANÇA) */}
             <DeleteConfirmationModal 
                 isOpen={deleteModal.isOpen} 
                 projectTitle={deleteModal.projectTitle}
@@ -368,7 +367,15 @@ const DreamApp = () => {
                                     </div>
                                 )}
                                 <p className="text-xs text-gray-500 mt-1">{new Date(proj.updated_at).toLocaleDateString()}</p>
-                                <button onClick={(e) => requestDeleteProject(e, proj)} className="absolute bottom-5 right-5 text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={18} /></button>
+                                
+                                {/* FIX: Botão de Deletar agora é VISÍVEL (text-gray-500) e não invisível */}
+                                <button 
+                                    onClick={(e) => requestDeleteProject(e, proj)} 
+                                    className="absolute bottom-5 right-5 text-gray-500 hover:text-red-500 transition-colors z-50 p-2 hover:bg-red-950/30 rounded-full"
+                                    title="Delete Project"
+                                >
+                                    <Trash2 size={18} />
+                                </button>
                             </div>
                         </div>
                     ))}
@@ -431,6 +438,7 @@ const DreamApp = () => {
   );
 };
 
+// --- WRAPPER OBRIGATÓRIO ---
 export default function DreamSystem() {
   return (
     <ReactFlowProvider>
