@@ -14,10 +14,11 @@ import ReactFlow, {
   useReactFlow
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Lock, LogOut, Loader2, Cloud, Plus, ArrowLeft, Trash2, FolderOpen, LayoutGrid, User, Globe } from 'lucide-react';
+import { Lock, LogOut, Loader2, Cloud, Plus, ArrowLeft, Trash2, FolderOpen, LayoutGrid, User, Globe, Edit3, Save } from 'lucide-react';
 
 import DreamNode from '../components/DreamNode';
 import DreamModal from '../components/DreamModal';
+import DeleteConfirmationModal from '../components/DeleteConfirmationModal'; // <--- IMPORT NOVO
 import NeuralBackground from '../components/NeuralBackground';
 import { supabase } from '../components/supabaseClient';
 import { LanguageProvider, useLanguage } from '../components/LanguageContext';
@@ -25,12 +26,7 @@ import { LanguageProvider, useLanguage } from '../components/LanguageContext';
 const nodeTypes = { dreamNode: DreamNode };
 
 const defaultStartNode = [
-  { 
-    id: '1', 
-    type: 'dreamNode', 
-    position: { x: 0, y: 0 }, 
-    data: { label: 'MAIN GOAL', image: '', progress: 0 } 
-  },
+  { id: '1', type: 'dreamNode', position: { x: 0, y: 0 }, data: { label: 'MAIN GOAL', image: '', progress: 0 } },
 ];
 
 const DreamApp = () => {
@@ -50,6 +46,12 @@ const DreamApp = () => {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [modalData, setModalData] = useState({ isOpen: false, node: null });
   
+  // MODAL DE DELETE SEGURO
+  const [deleteModal, setDeleteModal] = useState({ isOpen: false, projectId: null, projectTitle: '' });
+  // EDIÇÃO DE NOME NO DASHBOARD
+  const [editingProject, setEditingProject] = useState(null); // ID do projeto sendo editado
+  const [editName, setEditName] = useState('');
+
   const [saveStatus, setSaveStatus] = useState('saved'); 
   const saveTimeoutRef = useRef(null);
   const [langMenuOpen, setLangMenuOpen] = useState(false);
@@ -103,11 +105,36 @@ const DreamApp = () => {
     setLoading(false);
   };
 
-  const deleteProject = async (e, projectId) => {
+  // --- DELETE SEGURO DE PROJETO ---
+  const requestDeleteProject = (e, project) => {
     e.stopPropagation();
-    if(!confirm("Delete this dream forever?")) return;
-    await supabase.from('dream_trees').delete().eq('id', projectId);
-    setProjects(projects.filter(p => p.id !== projectId));
+    setDeleteModal({ isOpen: true, projectId: project.id, projectTitle: project.title || 'Untitled Dream' });
+  };
+
+  const confirmDeleteProject = async () => {
+    if (!deleteModal.projectId) return;
+    await supabase.from('dream_trees').delete().eq('id', deleteModal.projectId);
+    setProjects(projects.filter(p => p.id !== deleteModal.projectId));
+    setDeleteModal({ isOpen: false, projectId: null, projectTitle: '' });
+  };
+
+  // --- RENOMEAR PROJETO NO DASHBOARD ---
+  const startEditingProject = (e, project) => {
+    e.stopPropagation();
+    setEditingProject(project.id);
+    setEditName(project.title);
+  };
+
+  const saveProjectName = async (e) => {
+    e.stopPropagation();
+    if (!editingProject) return;
+
+    // Atualiza no banco
+    await supabase.from('dream_trees').update({ title: editName }).eq('id', editingProject);
+    
+    // Atualiza na tela
+    setProjects(projects.map(p => p.id === editingProject ? { ...p, title: editName } : p));
+    setEditingProject(null);
   };
 
   const openProject = (project) => {
@@ -124,13 +151,11 @@ const DreamApp = () => {
     setCurrentProject(null);
   };
 
-  // --- EDITOR & AUTOSAVE ---
   const forceSave = async () => {
       if (!user || !currentProject) return;
       setSaveStatus('saving');
-      const rootNode = nodes.find(n => n.id === '1' || nodes.length > 0);
-      const dynamicTitle = rootNode ? (rootNode.data.label || 'Untitled') : 'Empty Dream';
-      await supabase.from('dream_trees').update({ nodes: nodes, edges: edges, title: dynamicTitle, updated_at: new Date() }).eq('id', currentProject.id);
+      // O título não atualiza automaticamente mais pelo nó raiz, agora é fixo pelo nome do projeto
+      await supabase.from('dream_trees').update({ nodes: nodes, edges: edges, updated_at: new Date() }).eq('id', currentProject.id);
       setSaveStatus('saved');
   };
 
@@ -142,24 +167,17 @@ const DreamApp = () => {
     return () => clearTimeout(saveTimeoutRef.current);
   }, [nodes, edges]);
 
-  // --- LÓGICA DE CRIAR BLOCOS (CORRIGIDA) ---
+  // --- LÓGICA DE NÓS ---
   const onConnect = useCallback(
     (params) => setEdges((eds) => addEdge({ ...params, type: ConnectionLineType.SmoothStep, animated: true, style: { stroke: '#00E5FF', strokeWidth: 2 } }, eds)),
     [setEdges]
   );
 
   const addNode = useCallback((parentId, direction = 'DOWN') => {
-    console.log("Tentando criar nó...", { parentId, direction }); // DEBUG
-
-    // Tenta pegar pelo ReactFlow (memória) OU pela lista local (estado)
     const parentNode = getNode(parentId) || nodes.find(n => n.id === parentId);
     
-    if (!parentNode && parentId !== null) {
-        console.error("ERRO: Pai não encontrado!", parentId);
-        return;
-    }
+    if (!parentNode && parentId !== null) return;
     
-    // Calcula posição
     let position = { x: 0, y: 0 };
     if (parentNode) {
         const offset = 350;
@@ -174,13 +192,11 @@ const DreamApp = () => {
       id: newNodeId,
       type: 'dreamNode',
       position: position,
-      data: { label: 'NEW STEP', progress: 0 }
+      data: { label: 'NEW STEP', description: '', progress: 0 }
     };
 
-    // Adiciona o novo nó
     setNodes((nds) => [...nds, newNode]);
     
-    // Conecta com o pai
     if (parentId) {
         setEdges((eds) => [...eds, { 
             id: `e${parentId}-${newNodeId}`, 
@@ -191,14 +207,39 @@ const DreamApp = () => {
             style: { stroke: '#00E5FF', strokeWidth: 2, strokeDasharray: '5,5' } 
         }]);
     }
-  }, [getNode, nodes, setNodes, setEdges]); // Adicionei 'nodes' nas dependências para garantir o fallback
+  }, [getNode, nodes, setNodes, setEdges]); 
 
+  // --- SMART DELETE (CORRIGIDO PARA RECONECTAR) ---
   const deleteNode = useCallback((nodeId) => {
-    setNodes((nds) => nds.filter((n) => n.id !== nodeId));
-    setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
-  }, [setNodes, setEdges]);
+    // 1. Achar conexões chegando (Pais) e saindo (Filhos)
+    const incomingEdges = edges.filter(e => e.target === nodeId);
+    const outgoingEdges = edges.filter(e => e.source === nodeId);
 
-  // Injeção de funções nos nós
+    // 2. Criar novas conexões (Ligar cada Pai a cada Filho)
+    const newEdges = [];
+    incomingEdges.forEach(inEdge => {
+        outgoingEdges.forEach(outEdge => {
+            newEdges.push({
+                id: `e${inEdge.source}-${outEdge.target}`,
+                source: inEdge.source,
+                target: outEdge.target,
+                type: 'smoothstep',
+                animated: true,
+                style: { stroke: '#00E5FF', strokeWidth: 2, strokeDasharray: '5,5' }
+            });
+        });
+    });
+
+    // 3. Atualizar Estado
+    setNodes((nds) => nds.filter((n) => n.id !== nodeId));
+    setEdges((eds) => {
+        // Remove as arestas velhas que ligavam ao nó deletado
+        const filtered = eds.filter((e) => e.source !== nodeId && e.target !== nodeId);
+        // Adiciona as novas arestas de ponte
+        return [...filtered, ...newEdges];
+    });
+  }, [nodes, edges, setNodes, setEdges]);
+
   const nodesWithFunctions = nodes.map(n => ({
     ...n,
     data: { ...n.data, onAdd: addNode, onDelete: deleteNode, onNodeClick: () => setModalData({ isOpen: true, node: n }) }
@@ -232,10 +273,7 @@ const DreamApp = () => {
 
   const LanguageSelector = ({ className = "" }) => (
     <div className={`relative flex flex-col items-end z-[100] ${className}`}>
-        <button 
-            onClick={() => setLangMenuOpen(!langMenuOpen)}
-            className="w-10 h-10 rounded-full bg-black/50 border border-cyan-500/30 hover:border-cyan-400 text-cyan-400 flex items-center justify-center transition-all hover:shadow-[0_0_15px_rgba(0,229,255,0.3)]"
-        >
+        <button onClick={() => setLangMenuOpen(!langMenuOpen)} className="w-10 h-10 rounded-full bg-black/50 border border-cyan-500/30 hover:border-cyan-400 text-cyan-400 flex items-center justify-center transition-all hover:shadow-[0_0_15px_rgba(0,229,255,0.3)]">
             <Globe size={20} />
         </button>
         {langMenuOpen && (
@@ -261,9 +299,7 @@ const DreamApp = () => {
                     <div className="absolute inset-0 bg-cyan-500 blur-[30px] opacity-40 rounded-full"></div>
                     <Lock size={40} className="text-cyan-400 relative z-10" />
                 </div>
-                <h1 className="text-5xl font-oxanium font-bold text-white mb-2 tracking-wider drop-shadow-[0_0_10px_rgba(0,229,255,0.8)]">
-                    DREAM <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500">NEXUS</span>
-                </h1>
+                <h1 className="text-5xl font-oxanium font-bold text-white mb-2 tracking-wider drop-shadow-[0_0_10px_rgba(0,229,255,0.8)]">DREAM <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500">NEXUS</span></h1>
                 <p className="text-cyan-600 text-xs tracking-[0.4em] font-bold mb-8 text-center uppercase">{t('login_title')}</p>
                 <button onClick={handleGoogleLogin} disabled={loading} className="px-8 py-3 bg-black border border-cyan-500 text-white hover:bg-cyan-950/50 hover:border-cyan-400 rounded-lg transition-all font-oxanium tracking-widest text-sm flex items-center gap-2">
                     {loading ? <Loader2 className="animate-spin" /> : t('login_btn')}
@@ -277,26 +313,24 @@ const DreamApp = () => {
     return (
         <div className="w-screen h-screen text-white overflow-hidden font-inter relative flex flex-col">
             <NeuralBackground />
+            
+            {/* Modal de Delete */}
+            <DeleteConfirmationModal 
+                isOpen={deleteModal.isOpen} 
+                projectTitle={deleteModal.projectTitle}
+                onClose={() => setDeleteModal({ isOpen: false, projectId: null, projectTitle: '' })}
+                onConfirm={confirmDeleteProject}
+            />
+
             <div className="p-8 flex justify-between items-center border-b border-white/10 bg-black/50 backdrop-blur-md z-50 relative">
                 <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 bg-cyan-900/30 rounded-lg flex items-center justify-center border border-cyan-500/50">
-                        <LayoutGrid className="text-cyan-400" />
-                    </div>
-                    <div>
-                        <h2 className="font-oxanium text-2xl font-bold tracking-wide">{t('projects')}</h2>
-                        <p className="text-xs text-gray-500 uppercase tracking-widest">{projects.length} {t('active_dreams')}</p>
-                    </div>
+                    <div className="w-10 h-10 bg-cyan-900/30 rounded-lg flex items-center justify-center border border-cyan-500/50"><LayoutGrid className="text-cyan-400" /></div>
+                    <div><h2 className="font-oxanium text-2xl font-bold tracking-wide">{t('projects')}</h2><p className="text-xs text-gray-500 uppercase tracking-widest">{projects.length} {t('active_dreams')}</p></div>
                 </div>
                 <div className="flex items-center gap-6">
                      <div className="flex items-center gap-3 bg-white/5 px-4 py-2 rounded-full border border-white/10 hover:border-cyan-500/50 transition-colors">
-                        {user?.user_metadata?.avatar_url ? (
-                            <img src={user.user_metadata.avatar_url} className="w-8 h-8 rounded-full border border-green-500" />
-                        ) : (
-                            <div className="w-8 h-8 rounded-full border border-green-500 bg-green-900/20 flex items-center justify-center"><User size={16}/></div>
-                        )}
-                        <span className="text-sm font-bold text-gray-300 font-oxanium uppercase tracking-wider">
-                            {user?.user_metadata?.full_name || 'Dreamer'}
-                        </span>
+                        {user?.user_metadata?.avatar_url ? (<img src={user.user_metadata.avatar_url} className="w-8 h-8 rounded-full border border-green-500" />) : (<div className="w-8 h-8 rounded-full border border-green-500 bg-green-900/20 flex items-center justify-center"><User size={16}/></div>)}
+                        <span className="text-sm font-bold text-gray-300 font-oxanium uppercase tracking-wider">{user?.user_metadata?.full_name || 'Dreamer'}</span>
                      </div>
                      <LanguageSelector />
                      <button onClick={handleLogout} className="text-red-500 hover:text-white transition-colors"><LogOut size={20}/></button>
@@ -306,26 +340,35 @@ const DreamApp = () => {
             <div className="flex-1 overflow-y-auto p-10 z-10 custom-scrollbar">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl mx-auto">
                     <button onClick={createNewProject} disabled={loading} className="group h-64 border-2 border-dashed border-gray-800 hover:border-cyan-500 rounded-xl flex flex-col items-center justify-center gap-4 hover:bg-cyan-950/10 transition-all">
-                        <div className="w-16 h-16 rounded-full bg-gray-900 group-hover:bg-cyan-500 flex items-center justify-center transition-colors">
-                            <Plus size={32} className="text-gray-500 group-hover:text-black" />
-                        </div>
+                        <div className="w-16 h-16 rounded-full bg-gray-900 group-hover:bg-cyan-500 flex items-center justify-center transition-colors"><Plus size={32} className="text-gray-500 group-hover:text-black" /></div>
                         <span className="font-oxanium font-bold text-gray-500 group-hover:text-cyan-400 tracking-widest">{t('create_new')}</span>
                     </button>
 
                     {projects.map((proj) => (
                         <div key={proj.id} onClick={() => openProject(proj)} className="group h-64 bg-gray-900/50 border border-white/5 hover:border-cyan-500 rounded-xl relative overflow-hidden cursor-pointer transition-all hover:shadow-[0_0_30px_rgba(0,229,255,0.15)] flex flex-col">
                             <div className="flex-1 bg-black/50 relative">
-                                {proj.nodes?.[0]?.data?.image ? (
-                                    <img src={proj.nodes[0].data.image} className="w-full h-full object-cover opacity-50 group-hover:opacity-80 transition-opacity" />
-                                ) : (
-                                    <div className="w-full h-full flex items-center justify-center text-gray-700 group-hover:text-cyan-900/50"><FolderOpen size={48} /></div>
-                                )}
+                                {proj.nodes?.[0]?.data?.image ? (<img src={proj.nodes[0].data.image} className="w-full h-full object-cover opacity-50 group-hover:opacity-80 transition-opacity" />) : (<div className="w-full h-full flex items-center justify-center text-gray-700 group-hover:text-cyan-900/50"><FolderOpen size={48} /></div>)}
                                 <div className="absolute inset-0 bg-gradient-to-t from-gray-900 to-transparent"></div>
                             </div>
                             <div className="p-5 relative">
-                                <h3 className="font-oxanium font-bold text-lg truncate text-white group-hover:text-cyan-400 transition-colors">{proj.title || t('untitled')}</h3>
+                                {editingProject === proj.id ? (
+                                    <div className="flex items-center gap-2 mb-1" onClick={(e) => e.stopPropagation()}>
+                                        <input 
+                                            value={editName}
+                                            onChange={(e) => setEditName(e.target.value)}
+                                            className="bg-black/80 border border-cyan-500 text-white px-2 py-1 text-sm rounded w-full focus:outline-none"
+                                            autoFocus
+                                        />
+                                        <button onClick={saveProjectName} className="text-cyan-400 hover:text-white"><Save size={16} /></button>
+                                    </div>
+                                ) : (
+                                    <div className="flex justify-between items-center">
+                                        <h3 className="font-oxanium font-bold text-lg truncate text-white group-hover:text-cyan-400 transition-colors max-w-[80%]">{proj.title || t('untitled')}</h3>
+                                        <button onClick={(e) => startEditingProject(e, proj)} className="text-gray-600 hover:text-cyan-400 opacity-0 group-hover:opacity-100 transition-all"><Edit3 size={16}/></button>
+                                    </div>
+                                )}
                                 <p className="text-xs text-gray-500 mt-1">{new Date(proj.updated_at).toLocaleDateString()}</p>
-                                <button onClick={(e) => deleteProject(e, proj.id)} className="absolute bottom-5 right-5 text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={18} /></button>
+                                <button onClick={(e) => requestDeleteProject(e, proj)} className="absolute bottom-5 right-5 text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={18} /></button>
                             </div>
                         </div>
                     ))}
