@@ -6,7 +6,13 @@ const DeleteConfirmationModal = ({ isOpen, onClose, onConfirm, projectTitle }) =
 
   if (!isOpen) return null;
 
-  const isMatch = typedName === projectTitle;
+  // Lógica "Inteligente":
+  // 1. Remove espaços extras do começo e fim (.trim())
+  // 2. Transforma tudo em minúsculo (.toLowerCase())
+  // Assim, "  Main Goal  " funciona igual a "MAIN GOAL"
+  const cleanTyped = typedName.trim().toLowerCase();
+  const cleanTitle = projectTitle.trim().toLowerCase();
+  const isMatch = cleanTyped === cleanTitle;
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -37,9 +43,9 @@ const DeleteConfirmationModal = ({ isOpen, onClose, onConfirm, projectTitle }) =
                     type="text" 
                     value={typedName}
                     onChange={(e) => setTypedName(e.target.value)}
-                    className="w-full bg-black border border-red-900 focus:border-red-500 text-white p-3 rounded font-mono text-sm focus:outline-none focus:shadow-[0_0_15px_rgba(220,38,38,0.3)] transition-all"
+                    className="w-full bg-black border border-red-900 focus:border-red-500 text-white p-3 rounded font-mono text-sm focus:outline-none focus:shadow-[0_0_15px_rgba(220,38,38,0.3)] transition-all uppercase"
                     placeholder={projectTitle}
-                    onPaste={(e) => e.preventDefault()} // Bloqueia colar para forçar digitar (opcional, mas mais seguro)
+                    autoFocus
                 />
             </div>
         </div>
@@ -60,7 +66,7 @@ const DeleteConfirmationModal = ({ isOpen, onClose, onConfirm, projectTitle }) =
                     }
                 }}
                 disabled={!isMatch}
-                className={`px-6 py-2 bg-red-600 hover:bg-red-500 text-white font-bold font-oxanium text-sm uppercase tracking-widest flex items-center gap-2 rounded transition-all ${!isMatch ? 'opacity-50 cursor-not-allowed grayscale' : 'shadow-[0_0_20px_#dc2626]'}`}
+                className={`px-6 py-2 bg-red-600 hover:bg-red-500 text-white font-bold font-oxanium text-sm uppercase tracking-widest flex items-center gap-2 rounded transition-all ${!isMatch ? 'opacity-50 cursor-not-allowed grayscale' : 'shadow-[0_0_20px_#dc2626] cursor-pointer'}`}
             >
                 <Trash2 size={16} /> Delete Forever
             </button>

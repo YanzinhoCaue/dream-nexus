@@ -107,9 +107,11 @@ const DreamApp = () => {
 
   // --- DELETE DE PROJETO (FIX: Botão visível + Modal) ---
   const requestDeleteProject = (e, project) => {
-    e.stopPropagation(); // Impede de abrir o projeto ao clicar na lixeira
+    e.stopPropagation(); 
     e.preventDefault();
-    setDeleteModal({ isOpen: true, projectId: project.id, projectTitle: project.title || 'Untitled Dream' });
+    // CORREÇÃO: Usa t('untitled') para garantir que o nome batendo com o que você vê na tela
+    const displayTitle = project.title || t('untitled');
+    setDeleteModal({ isOpen: true, projectId: project.id, projectTitle: displayTitle });
   };
 
   const confirmDeleteProject = async () => {
