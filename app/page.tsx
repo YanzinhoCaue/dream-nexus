@@ -10,8 +10,8 @@ import ReactFlow, {
   ConnectionLineType,
   useNodesState,
   useEdgesState,
-  ReactFlowProvider, // <--- IMPORTANTE
-  useReactFlow       // <--- IMPORTANTE
+  ReactFlowProvider,
+  useReactFlow
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { Lock, LogOut, Loader2, Cloud, Plus, ArrowLeft, Trash2, FolderOpen, LayoutGrid, User, Globe } from 'lucide-react';
@@ -35,7 +35,7 @@ const defaultStartNode = [
 
 const DreamApp = () => {
   const { t, lang, setLang } = useLanguage();
-  const { getNode } = useReactFlow(); // <--- O SEGREDO: Pega o nó direto da fonte
+  const { getNode } = useReactFlow(); 
   
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -149,11 +149,13 @@ const DreamApp = () => {
   );
 
   const addNode = useCallback((parentId, direction = 'DOWN') => {
-    // CORREÇÃO: Usamos getNode() em vez de procurar no estado 'nodes' que podia estar velho
-    const parentNode = getNode(parentId);
+    console.log("Tentando criar nó...", { parentId, direction }); // DEBUG
+
+    // Tenta pegar pelo ReactFlow (memória) OU pela lista local (estado)
+    const parentNode = getNode(parentId) || nodes.find(n => n.id === parentId);
     
     if (!parentNode && parentId !== null) {
-        console.error("Parent node not found:", parentId);
+        console.error("ERRO: Pai não encontrado!", parentId);
         return;
     }
     
@@ -175,8 +177,10 @@ const DreamApp = () => {
       data: { label: 'NEW STEP', progress: 0 }
     };
 
+    // Adiciona o novo nó
     setNodes((nds) => [...nds, newNode]);
     
+    // Conecta com o pai
     if (parentId) {
         setEdges((eds) => [...eds, { 
             id: `e${parentId}-${newNodeId}`, 
@@ -187,7 +191,7 @@ const DreamApp = () => {
             style: { stroke: '#00E5FF', strokeWidth: 2, strokeDasharray: '5,5' } 
         }]);
     }
-  }, [getNode, setNodes, setEdges]); // Dependências corretas
+  }, [getNode, nodes, setNodes, setEdges]); // Adicionei 'nodes' nas dependências para garantir o fallback
 
   const deleteNode = useCallback((nodeId) => {
     setNodes((nds) => nds.filter((n) => n.id !== nodeId));
@@ -384,7 +388,6 @@ const DreamApp = () => {
   );
 };
 
-// --- WRAPPER OBRIGATÓRIO ---
 export default function DreamSystem() {
   return (
     <ReactFlowProvider>
