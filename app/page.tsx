@@ -11,10 +11,14 @@ import ReactFlow, {
   useNodesState,
   useEdgesState,
   ReactFlowProvider,
-  useReactFlow
+  useReactFlow,
+  getRectOfNodes,
+  getTransformForBounds
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Lock, LogOut, Loader2, Cloud, Plus, ArrowLeft, Trash2, FolderOpen, LayoutGrid, User, Globe, Edit3, Save } from 'lucide-react';
+import { Lock, LogOut, Loader2, Cloud, Plus, ArrowLeft, Trash2, FolderOpen, LayoutGrid, User, Globe, Edit3, Save, Download, Printer } from 'lucide-react';
+import { toPng } from 'html-to-image'; // <--- IMPORTANTE
+import { jsPDF } from 'jspdf';         // <--- IMPORTANTE
 
 import DreamNode from '../components/DreamNode';
 import DreamModal from '../components/DreamModal';
@@ -31,8 +35,7 @@ const defaultStartNode = [
 
 const DreamApp = () => {
   const { t, lang, setLang } = useLanguage();
-  // Importante: getEdges e getNodes pegam o estado MAIS ATUAL, corrigindo o erro de conexão
-  const { getNode, getEdges, getNodes } = useReactFlow(); 
+  const { getNode, getEdges, getNodes, fitView } = useReactFlow(); 
   
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -47,7 +50,6 @@ const DreamApp = () => {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [modalData, setModalData] = useState({ isOpen: false, node: null });
   
-  // MODAIS
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, projectId: null, projectTitle: '' });
   const [editingProject, setEditingProject] = useState(null);
   const [editName, setEditName] = useState('');
@@ -55,6 +57,7 @@ const DreamApp = () => {
   const [saveStatus, setSaveStatus] = useState('saved'); 
   const saveTimeoutRef = useRef(null);
   const [langMenuOpen, setLangMenuOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false); // Estado para o loading do PDF
 
   useEffect(() => { viewRef.current = view; }, [view]);
 
@@ -84,6 +87,49 @@ const DreamApp = () => {
     return () => subscription.unsubscribe();
   }, []);
 
+  // --- FUNÇÃO DE EXPORTAR PDF ---
+  const exportToPDF = async () => {
+    setIsExporting(true);
+    try {
+        // 1. Busca o elemento da árvore (sem a UI em volta)
+        const flowElement = document.querySelector('.react-flow__viewport');
+        
+        if (!flowElement) return;
+
+        // 2. Garante que tudo caiba na tela antes da foto
+        await fitView({ padding: 0.5 }); 
+
+        // 3. Gera a imagem em alta qualidade
+        const dataUrl = await toPng(document.querySelector('.react-flow'), {
+            backgroundColor: '#05050a', // Fundo Cyberpunk (Preto azulado)
+            width: 1920,
+            height: 1080,
+            style: {
+                width: '1920px',
+                height: '1080px',
+            }
+        });
+
+        // 4. Cria o PDF e salva
+        const pdf = new jsPDF({
+            orientation: 'landscape',
+        });
+        
+        const imgProps = pdf.getImageProperties(dataUrl);
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+        pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight);
+        pdf.save(`Dream-Nexus-${currentProject?.title || 'Project'}.pdf`);
+
+    } catch (error) {
+        console.error("Erro ao exportar:", error);
+        alert("Erro ao gerar PDF. Tente novamente.");
+    } finally {
+        setIsExporting(false);
+    }
+  };
+
   // --- DASHBOARD ---
   const fetchProjects = async (userId) => {
     const { data } = await supabase.from('dream_trees').select('*').eq('user_id', userId).order('updated_at', { ascending: false });
@@ -105,11 +151,9 @@ const DreamApp = () => {
     setLoading(false);
   };
 
-  // --- DELETE DE PROJETO (FIX: Botão visível + Modal) ---
   const requestDeleteProject = (e, project) => {
     e.stopPropagation(); 
     e.preventDefault();
-    // CORREÇÃO: Usa t('untitled') para garantir que o nome batendo com o que você vê na tela
     const displayTitle = project.title || t('untitled');
     setDeleteModal({ isOpen: true, projectId: project.id, projectTitle: displayTitle });
   };
@@ -164,13 +208,12 @@ const DreamApp = () => {
     return () => clearTimeout(saveTimeoutRef.current);
   }, [nodes, edges]);
 
-  // --- LÓGICA DE CONEXÃO ---
+  // --- LÓGICA DE NÓS ---
   const onConnect = useCallback(
     (params) => setEdges((eds) => addEdge({ ...params, type: ConnectionLineType.SmoothStep, animated: true, style: { stroke: '#00E5FF', strokeWidth: 2 } }, eds)),
     [setEdges]
   );
 
-  // --- ADICIONAR NOVO BLOCO ---
   const addNode = useCallback((parentId, direction = 'DOWN') => {
     const parentNode = getNode(parentId) || nodes.find(n => n.id === parentId);
     if (!parentNode && parentId !== null) return;
@@ -206,21 +249,16 @@ const DreamApp = () => {
     }
   }, [getNode, nodes, setNodes, setEdges]); 
 
-  // --- SMART DELETE (FIX REAL: USA getEdges()) ---
   const deleteNode = useCallback((nodeId) => {
-    // 1. Pega as arestas ATUAIS direto da fonte (não usa state antigo)
     const currentEdges = getEdges(); 
-
-    // 2. Acha quem entra (pais) e quem sai (filhos) do nó que será deletado
     const incomingEdges = currentEdges.filter(e => e.target === nodeId);
     const outgoingEdges = currentEdges.filter(e => e.source === nodeId);
 
-    // 3. Cria as novas arestas de ponte
     const bridgeEdges = [];
     incomingEdges.forEach(inEdge => {
         outgoingEdges.forEach(outEdge => {
             bridgeEdges.push({
-                id: `e${inEdge.source}-${outEdge.target}-${Date.now()}`, // ID único
+                id: `e${inEdge.source}-${outEdge.target}-${Date.now()}`,
                 source: inEdge.source,
                 target: outEdge.target,
                 type: 'smoothstep',
@@ -230,10 +268,7 @@ const DreamApp = () => {
         });
     });
 
-    // 4. Atualiza os nós (remove o deletado)
     setNodes((nds) => nds.filter((n) => n.id !== nodeId));
-
-    // 5. Atualiza as arestas (remove as ligadas ao deletado + adiciona as pontes)
     setEdges((eds) => {
         const remainingEdges = eds.filter((e) => e.source !== nodeId && e.target !== nodeId);
         return [...remainingEdges, ...bridgeEdges];
@@ -315,7 +350,6 @@ const DreamApp = () => {
         <div className="w-screen h-screen text-white overflow-hidden font-inter relative flex flex-col">
             <NeuralBackground />
             
-            {/* Modal de Delete (SEGURANÇA) */}
             <DeleteConfirmationModal 
                 isOpen={deleteModal.isOpen} 
                 projectTitle={deleteModal.projectTitle}
@@ -354,12 +388,7 @@ const DreamApp = () => {
                             <div className="p-5 relative">
                                 {editingProject === proj.id ? (
                                     <div className="flex items-center gap-2 mb-1" onClick={(e) => e.stopPropagation()}>
-                                        <input 
-                                            value={editName}
-                                            onChange={(e) => setEditName(e.target.value)}
-                                            className="bg-black/80 border border-cyan-500 text-white px-2 py-1 text-sm rounded w-full focus:outline-none"
-                                            autoFocus
-                                        />
+                                        <input value={editName} onChange={(e) => setEditName(e.target.value)} className="bg-black/80 border border-cyan-500 text-white px-2 py-1 text-sm rounded w-full focus:outline-none" autoFocus />
                                         <button onClick={saveProjectName} className="text-cyan-400 hover:text-white"><Save size={16} /></button>
                                     </div>
                                 ) : (
@@ -369,15 +398,7 @@ const DreamApp = () => {
                                     </div>
                                 )}
                                 <p className="text-xs text-gray-500 mt-1">{new Date(proj.updated_at).toLocaleDateString()}</p>
-                                
-                                {/* FIX: Botão de Deletar agora é VISÍVEL (text-gray-500) e não invisível */}
-                                <button 
-                                    onClick={(e) => requestDeleteProject(e, proj)} 
-                                    className="absolute bottom-5 right-5 text-gray-500 hover:text-red-500 transition-colors z-50 p-2 hover:bg-red-950/30 rounded-full"
-                                    title="Delete Project"
-                                >
-                                    <Trash2 size={18} />
-                                </button>
+                                <button onClick={(e) => requestDeleteProject(e, proj)} className="absolute bottom-5 right-5 text-gray-500 hover:text-red-500 transition-colors z-50 p-2 hover:bg-red-950/30 rounded-full" title="Delete Project"><Trash2 size={18} /></button>
                             </div>
                         </div>
                     ))}
@@ -404,6 +425,16 @@ const DreamApp = () => {
       </div>
 
       <div className="absolute top-6 right-8 z-50 flex items-center gap-4">
+        {/* BOTÃO EXPORTAR PDF */}
+        <button 
+            onClick={exportToPDF} 
+            disabled={isExporting}
+            className="flex items-center gap-2 font-oxanium text-xs tracking-widest uppercase bg-cyan-900/30 hover:bg-cyan-900/50 text-cyan-400 px-4 py-2 rounded border border-cyan-500/30 transition-all cursor-pointer disabled:opacity-50"
+        >
+            {isExporting ? <Loader2 size={14} className="animate-spin"/> : <Printer size={16} />}
+            <span>{isExporting ? 'EXPORTING...' : 'EXPORT PDF'}</span>
+        </button>
+
         <div className="flex items-center gap-2 font-oxanium text-xs tracking-widest uppercase bg-black/50 px-3 py-1 rounded border border-white/5">
             {saveStatus === 'saving' ? (<><Loader2 size={12} className="text-cyan-400 animate-spin" /><span className="text-cyan-400">{t('syncing')}</span></>) : (<><Cloud size={14} className="text-gray-500" /><span className="text-gray-500">{t('saved')}</span></>)}
         </div>
@@ -440,7 +471,6 @@ const DreamApp = () => {
   );
 };
 
-// --- WRAPPER OBRIGATÓRIO ---
 export default function DreamSystem() {
   return (
     <ReactFlowProvider>
