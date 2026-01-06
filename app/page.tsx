@@ -474,6 +474,7 @@ const DreamApp = () => {
         className="bg-transparent"
         minZoom={0.1}
       >
+        <Background color="#000" gap={30} size={1} style={{opacity: 0.1}} />
         {/* Controls REMOVIDO AQUI (Passo 1) */}
       </ReactFlow>
 
