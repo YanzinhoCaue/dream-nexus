@@ -4,7 +4,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import ReactFlow, { 
   Background, 
-  Controls, 
+  // Controls, <--- REMOVIDO (Passo 1)
   applyNodeChanges, 
   addEdge,
   ConnectionLineType,
@@ -12,13 +12,13 @@ import ReactFlow, {
   useEdgesState,
   ReactFlowProvider,
   useReactFlow,
-  getRectOfNodes,
-  getTransformForBounds
+  getRectOfNodes,        // Necessário para o PDF HD
+  getTransformForBounds  // Necessário para o PDF HD
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Lock, LogOut, Loader2, Cloud, Plus, ArrowLeft, Trash2, FolderOpen, LayoutGrid, User, Globe, Edit3, Save, Download, Printer } from 'lucide-react';
-import { toPng } from 'html-to-image'; // <--- IMPORTANTE
-import { jsPDF } from 'jspdf';         // <--- IMPORTANTE
+import { Lock, LogOut, Loader2, Cloud, Plus, ArrowLeft, Trash2, FolderOpen, LayoutGrid, User, Globe, Edit3, Save, Printer } from 'lucide-react';
+import { toPng } from 'html-to-image';
+import { jsPDF } from 'jspdf';
 
 import DreamNode from '../components/DreamNode';
 import DreamModal from '../components/DreamModal';
@@ -35,7 +35,8 @@ const defaultStartNode = [
 
 const DreamApp = () => {
   const { t, lang, setLang } = useLanguage();
-  const { getNode, getEdges, getNodes, fitView } = useReactFlow(); 
+  // Adicionado setViewport para controlar a câmera no PDF HD
+  const { getNode, getEdges, getNodes, fitView, setViewport } = useReactFlow(); 
   
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -57,7 +58,7 @@ const DreamApp = () => {
   const [saveStatus, setSaveStatus] = useState('saved'); 
   const saveTimeoutRef = useRef(null);
   const [langMenuOpen, setLangMenuOpen] = useState(false);
-  const [isExporting, setIsExporting] = useState(false); // Estado para o loading do PDF
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => { viewRef.current = view; }, [view]);
 
@@ -87,40 +88,53 @@ const DreamApp = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  // --- FUNÇÃO DE EXPORTAR PDF ---
+  // --- FUNÇÃO DE EXPORTAR PDF (AGORA EM HD 4K) ---
   const exportToPDF = async () => {
     setIsExporting(true);
     try {
-        // 1. Busca o elemento da árvore (sem a UI em volta)
-        const flowElement = document.querySelector('.react-flow__viewport');
+        // 1. Definir uma resolução alvo bem alta (4K)
+        const imageWidth = 3840;
+        const imageHeight = 2160;
+
+        // 2. Calcular os limites exatos de todos os nós presentes
+        const nodesBounds = getRectOfNodes(getNodes());
         
-        if (!flowElement) return;
+        // 3. Calcular o zoom e posição perfeitos para encaixar tudo na resolução 4K com uma pequena margem (0.1)
+        const transform = getTransformForBounds(nodesBounds, imageWidth, imageHeight, 0.1, 2);
 
-        // 2. Garante que tudo caiba na tela antes da foto
-        await fitView({ padding: 0.5 }); 
+        // 4. Forçar a câmera do React Flow para essa posição exata instantaneamente
+        setViewport({ x: transform[0], y: transform[1], zoom: transform[2] });
 
-        // 3. Gera a imagem em alta qualidade
-        const dataUrl = await toPng(document.querySelector('.react-flow'), {
-            backgroundColor: '#05050a', // Fundo Cyberpunk (Preto azulado)
-            width: 1920,
-            height: 1080,
+        // Espera um breve momento para o React Flow renderizar os nós na nova posição (importante se tiver imagens)
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        // 5. Gera a imagem em ALTA DEFINIÇÃO usando a viewport específica
+        // O segredo da qualidade é pixelRatio: 2 (dobra a densidade de pixels) e forçar o tamanho 4K
+        const dataUrl = await toPng(document.querySelector('.react-flow__viewport'), {
+            backgroundColor: '#05050a', // Fundo Cyberpunk
+            width: imageWidth,
+            height: imageHeight,
+            pixelRatio: 2, // Super nitidez
             style: {
-                width: '1920px',
-                height: '1080px',
+                width: `${imageWidth}px`,
+                height: `${imageHeight}px`,
+                // Força a transformação calculada para garantir que a "foto" saia correta
+                transform: `translate(${transform[0]}px, ${transform[1]}px) scale(${transform[2]})`,
             }
         });
 
-        // 4. Cria o PDF e salva
+        // 6. Cria o PDF no tamanho exato da imagem 4K
         const pdf = new jsPDF({
             orientation: 'landscape',
+            unit: 'px',
+            format: [imageWidth, imageHeight] 
         });
         
-        const imgProps = pdf.getImageProperties(dataUrl);
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-
-        pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight);
+        pdf.addImage(dataUrl, 'PNG', 0, 0, imageWidth, imageHeight);
         pdf.save(`Dream-Nexus-${currentProject?.title || 'Project'}.pdf`);
+        
+        // 7. Restaura a visão normal para o usuário com uma animação suave
+        await fitView({ padding: 0.2, duration: 800 });
 
     } catch (error) {
         console.error("Erro ao exportar:", error);
@@ -425,14 +439,14 @@ const DreamApp = () => {
       </div>
 
       <div className="absolute top-6 right-8 z-50 flex items-center gap-4">
-        {/* BOTÃO EXPORTAR PDF */}
+        {/* BOTÃO EXPORTAR PDF (Agora com Loader) */}
         <button 
             onClick={exportToPDF} 
             disabled={isExporting}
-            className="flex items-center gap-2 font-oxanium text-xs tracking-widest uppercase bg-cyan-900/30 hover:bg-cyan-900/50 text-cyan-400 px-4 py-2 rounded border border-cyan-500/30 transition-all cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-2 font-oxanium text-xs tracking-widest uppercase bg-cyan-900/30 hover:bg-cyan-900/50 text-cyan-400 px-4 py-2 rounded border border-cyan-500/30 transition-all cursor-pointer disabled:opacity-50 hover:shadow-[0_0_15px_rgba(0,229,255,0.2)]"
         >
             {isExporting ? <Loader2 size={14} className="animate-spin"/> : <Printer size={16} />}
-            <span>{isExporting ? 'EXPORTING...' : 'EXPORT PDF'}</span>
+            <span>{isExporting ? 'GENERATING 4K PDF...' : 'EXPORT PDF'}</span>
         </button>
 
         <div className="flex items-center gap-2 font-oxanium text-xs tracking-widest uppercase bg-black/50 px-3 py-1 rounded border border-white/5">
@@ -461,7 +475,7 @@ const DreamApp = () => {
         minZoom={0.1}
       >
         <Background color="#000" gap={30} size={1} style={{opacity: 0.1}} />
-        <Controls className="!bg-black !border-cyan-900 !m-4 !rounded-lg overflow-hidden" showInteractive={false} />
+        {/* Controls REMOVIDO AQUI (Passo 1) */}
       </ReactFlow>
 
       {modalData.isOpen && modalData.node && (
@@ -471,6 +485,7 @@ const DreamApp = () => {
   );
 };
 
+// --- WRAPPER OBRIGATÓRIO ---
 export default function DreamSystem() {
   return (
     <ReactFlowProvider>
