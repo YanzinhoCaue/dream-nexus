@@ -463,6 +463,20 @@ const DreamApp = () => {
           </div>
       )}
 
+      <ReactFlow
+        nodes={nodesWithFunctions}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        nodeTypes={nodeTypes}
+        fitView
+        className="bg-transparent"
+        minZoom={0.1}
+      >
+        {/* Controls REMOVIDO AQUI (Passo 1) */}
+      </ReactFlow>
+
       {modalData.isOpen && modalData.node && (
         <DreamModal isOpen={modalData.isOpen} nodeData={modalData.node.data} onClose={() => setModalData({ ...modalData, isOpen: false })} onSave={onSaveModal} />
       )}
