@@ -309,10 +309,16 @@ const DreamApp = () => {
 
   const handleGoogleLogin = async () => {
     setLoading(true);
-    await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: { queryParams: { access_type: 'offline', prompt: 'consent' } },
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { queryParams: { access_type: 'offline', prompt: 'consent' } },
     });
+
+    if (error) {
+      console.error('Erro ao iniciar login Google:', error.message);
+      setLoading(false);
+      alert('Não foi possível iniciar o login. Verifique as variáveis NEXT_PUBLIC_SUPABASE_* e tente novamente.');
+    }
   };
 
   const handleLogout = async () => {
