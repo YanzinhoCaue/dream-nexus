@@ -7,7 +7,7 @@ const DreamNode = ({ data, id }) => {
   // Função auxiliar para os botões
   const AddButton = ({ positionClass, direction }) => (
     <button 
-      className={`nodrag absolute ${positionClass} bg-black border border-cyan-500/50 text-cyan-500 p-1 rounded-full shadow-[0_0_10px_rgba(0,229,255,0.2)] hover:bg-cyan-500 hover:text-black hover:scale-110 transition-all z-50 opacity-0 group-hover:opacity-100 cursor-pointer`}
+      className={`nodrag absolute ${positionClass} bg-black border border-cyan-500/50 text-cyan-500 p-1 rounded-full shadow-[0_0_10px_rgba(0,229,255,0.2)] hover:bg-cyan-500 hover:text-black hover:scale-110 transition-all z-50 opacity-100 cursor-pointer`}
       onClick={(e) => {
         e.stopPropagation(); // Impede que o clique passe para o card
         e.preventDefault();

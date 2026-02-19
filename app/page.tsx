@@ -432,32 +432,34 @@ const DreamApp = () => {
     <div className="w-screen h-screen text-white overflow-hidden font-inter animate-in fade-in duration-500 relative">
       <NeuralBackground />
 
-      <div className="absolute top-6 left-8 z-10 flex items-center gap-6">
-        <button onClick={exitEditor} className="w-10 h-10 rounded-full bg-black/50 border border-white/10 hover:border-cyan-500 text-gray-400 hover:text-cyan-400 flex items-center justify-center transition-all"><ArrowLeft size={20} /></button>
-        <div>
-            <h1 className="text-2xl font-oxanium font-bold text-white drop-shadow-[0_0_10px_#00E5FF]">{currentProject?.title || 'DREAM NEXUS'}</h1>
-            <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
-                <p className="text-cyan-700 text-[10px] tracking-[0.3em] font-bold">{t('editor_active')}</p>
+      <div className="absolute top-4 left-4 right-4 md:top-6 md:left-8 md:right-8 z-50">
+        <div className="flex items-start gap-3 md:gap-6">
+          <button onClick={exitEditor} className="w-10 h-10 rounded-full bg-black/50 border border-white/10 hover:border-cyan-500 text-gray-400 hover:text-cyan-400 flex items-center justify-center transition-all shrink-0"><ArrowLeft size={20} /></button>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-base sm:text-lg md:text-2xl font-oxanium font-bold text-white drop-shadow-[0_0_10px_#00E5FF] truncate">{currentProject?.title || 'DREAM NEXUS'}</h1>
+            <div className="flex items-center gap-2 mt-1">
+              <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+              <p className="text-cyan-700 text-[10px] tracking-[0.3em] font-bold">{t('editor_active')}</p>
             </div>
-        </div>
-      </div>
 
-      <div className="absolute top-6 right-8 z-50 flex items-center gap-4">
-        {/* BOTÃO EXPORTAR PDF (Agora com Loader) */}
-        <button 
-            onClick={exportToPDF} 
-            disabled={isExporting}
-            className="flex items-center gap-2 font-oxanium text-xs tracking-widest uppercase bg-cyan-900/30 hover:bg-cyan-900/50 text-cyan-400 px-4 py-2 rounded border border-cyan-500/30 transition-all cursor-pointer disabled:opacity-50 hover:shadow-[0_0_15px_rgba(0,229,255,0.2)]"
-        >
-            {isExporting ? <Loader2 size={14} className="animate-spin"/> : <Printer size={16} />}
-            <span>{isExporting ? 'GENERATING 4K PDF...' : 'EXPORT PDF'}</span>
-        </button>
+            <div className="mt-2 md:mt-3 flex items-center gap-2 md:gap-4 flex-wrap">
+              <button
+                onClick={exportToPDF}
+                disabled={isExporting}
+                title="Exportar PDF"
+                aria-label="Exportar PDF"
+                className="h-10 w-10 bg-cyan-900/30 hover:bg-cyan-900/50 text-cyan-400 rounded border border-cyan-500/30 transition-all cursor-pointer disabled:opacity-50 hover:shadow-[0_0_15px_rgba(0,229,255,0.2)] flex items-center justify-center"
+              >
+                {isExporting ? <Loader2 size={16} className="animate-spin"/> : <Printer size={16} />}
+              </button>
 
-        <div className="flex items-center gap-2 font-oxanium text-xs tracking-widest uppercase bg-black/50 px-3 py-1 rounded border border-white/5">
-            {saveStatus === 'saving' ? (<><Loader2 size={12} className="text-cyan-400 animate-spin" /><span className="text-cyan-400">{t('syncing')}</span></>) : (<><Cloud size={14} className="text-gray-500" /><span className="text-gray-500">{t('saved')}</span></>)}
+              <div className="flex items-center gap-2 font-oxanium text-[10px] md:text-xs tracking-widest uppercase bg-black/50 px-2.5 py-1 rounded border border-white/5">
+                {saveStatus === 'saving' ? (<><Loader2 size={12} className="text-cyan-400 animate-spin" /><span className="text-cyan-400">{t('syncing')}</span></>) : (<><Cloud size={14} className="text-gray-500" /><span className="text-gray-500">{t('saved')}</span></>)}
+              </div>
+              <LanguageSelector />
+            </div>
+          </div>
         </div>
-        <LanguageSelector />
       </div>
 
       {nodes.length === 0 && (
