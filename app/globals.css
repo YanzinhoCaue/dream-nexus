@@ -36,6 +36,16 @@ body {
 /* ... código anterior ... */
 
 /* ESTILO DOS BOTÕES DE ZOOM (REACT FLOW) */
+.react-flow__controls {
+  left: 16px !important;
+  bottom: 16px !important;
+  border: 1px solid #083344 !important;
+  border-radius: 8px !important;
+  overflow: hidden !important;
+  box-shadow: 0 0 18px rgba(0, 229, 255, 0.18) !important;
+  z-index: 60 !important;
+}
+
 .react-flow__controls-button {
     background-color: #000 !important;
     border-bottom: 1px solid #083344 !important; /* Cyan-900 */

@@ -4,7 +4,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import ReactFlow, { 
   Background, 
-  // Controls, <--- REMOVIDO (Passo 1)
   applyNodeChanges, 
   addEdge,
   ConnectionLineType,
@@ -16,7 +15,7 @@ import ReactFlow, {
   getTransformForBounds  // Necessário para o PDF HD
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Lock, LogOut, Loader2, Cloud, Plus, ArrowLeft, Trash2, FolderOpen, LayoutGrid, User, Globe, Edit3, Save, Printer } from 'lucide-react';
+import { Lock, LogOut, Loader2, Cloud, Plus, Minus, LocateFixed, ArrowLeft, Trash2, FolderOpen, LayoutGrid, User, Globe, Edit3, Save, Printer } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 
@@ -36,7 +35,7 @@ const defaultStartNode = [
 const DreamApp = () => {
   const { t, lang, setLang } = useLanguage();
   // Adicionado setViewport para controlar a câmera no PDF HD
-  const { getNode, getEdges, getNodes, fitView, setViewport } = useReactFlow(); 
+  const { getNode, getEdges, getNodes, fitView, setViewport, zoomIn, zoomOut } = useReactFlow(); 
   
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -481,8 +480,34 @@ const DreamApp = () => {
         minZoom={0.1}
       >
         <Background color="#000" gap={30} size={1} style={{opacity: 0.1}} />
-        {/* Controls REMOVIDO AQUI (Passo 1) */}
       </ReactFlow>
+
+      <div className="absolute bottom-6 left-6 z-[70] flex flex-col overflow-hidden rounded-lg border border-cyan-500/40 bg-black/80 shadow-[0_0_18px_rgba(0,229,255,0.18)] backdrop-blur-md">
+        <button
+          onClick={() => zoomIn({ duration: 200 })}
+          title="Aumentar zoom"
+          aria-label="Aumentar zoom"
+          className="h-10 w-10 border-b border-cyan-500/30 text-cyan-400 transition-colors hover:bg-cyan-900/40 hover:text-white flex items-center justify-center"
+        >
+          <Plus size={16} />
+        </button>
+        <button
+          onClick={() => zoomOut({ duration: 200 })}
+          title="Diminuir zoom"
+          aria-label="Diminuir zoom"
+          className="h-10 w-10 border-b border-cyan-500/30 text-cyan-400 transition-colors hover:bg-cyan-900/40 hover:text-white flex items-center justify-center"
+        >
+          <Minus size={16} />
+        </button>
+        <button
+          onClick={() => fitView({ padding: 0.2, duration: 300 })}
+          title="Centralizar mapa"
+          aria-label="Centralizar mapa"
+          className="h-10 w-10 text-cyan-400 transition-colors hover:bg-cyan-900/40 hover:text-white flex items-center justify-center"
+        >
+          <LocateFixed size={16} />
+        </button>
+      </div>
 
       {modalData.isOpen && modalData.node && (
         <DreamModal isOpen={modalData.isOpen} nodeData={modalData.node.data} onClose={() => setModalData({ ...modalData, isOpen: false })} onSave={onSaveModal} />
