@@ -12,6 +12,8 @@ const DreamModal = ({ isOpen, onClose, nodeData, onSave }) => {
   const [steps, setSteps] = useState(nodeData.steps || []);
   const [imagePreview, setImagePreview] = useState(nodeData.image || '');
   const [isUploading, setIsUploading] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [uploadError, setUploadError] = useState('');
   const fileInputRef = useRef(null);
 
   // Colar Imagem (Ctrl+V)
@@ -46,6 +48,7 @@ const DreamModal = ({ isOpen, onClose, nodeData, onSave }) => {
   const handleFileUpload = async (file) => {
     if (!file) return;
     try {
+      setUploadError('');
       setIsUploading(true);
       const fileExt = file.name ? file.name.split('.').pop() : 'png';
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
@@ -61,7 +64,44 @@ const DreamModal = ({ isOpen, onClose, nodeData, onSave }) => {
     }
   };
 
-  const handleInputUpload = (e) => handleFileUpload(e.target.files[0]);
+  const handleInputUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.type?.startsWith('image/')) {
+      setUploadError('Arquivo inválido. Envie apenas imagens (PNG, JPG, WEBP...).');
+      return;
+    }
+    handleFileUpload(file);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isUploading) setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    if (isUploading) return;
+
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+    if (!file.type?.startsWith('image/')) {
+      setUploadError('Arquivo inválido. Envie apenas imagens (PNG, JPG, WEBP...).');
+      return;
+    }
+
+    handleFileUpload(file);
+  };
 
   const handleSave = () => {
     if (isUploading) return;
@@ -96,9 +136,20 @@ const DreamModal = ({ isOpen, onClose, nodeData, onSave }) => {
                     <label className="text-xs text-cyan-600 uppercase tracking-widest font-bold">{t('visual_db')}</label>
                     <span className="text-[10px] text-gray-500 flex items-center gap-1"><ClipboardCopy size={10}/> CTRL+V ENABLED</span>
                 </div>
-                <div onClick={() => !isUploading && fileInputRef.current.click()} className={`relative w-full h-48 border-2 border-dashed ${isUploading ? 'border-cyan-500 bg-cyan-900/20 cursor-wait' : 'border-gray-700 hover:border-cyan-500 hover:bg-cyan-900/10 cursor-pointer'} rounded-lg transition-all flex flex-col items-center justify-center group overflow-hidden`}>
+                <div
+                  onClick={() => !isUploading && fileInputRef.current.click()}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  className={`relative w-full h-48 border-2 border-dashed ${isUploading ? 'border-cyan-500 bg-cyan-900/20 cursor-wait' : isDragOver ? 'border-cyan-400 bg-cyan-900/20' : 'border-gray-700 hover:border-cyan-500 hover:bg-cyan-900/10 cursor-pointer'} rounded-lg transition-all flex flex-col items-center justify-center group overflow-hidden`}
+                >
                     {isUploading ? (
                         <div className="flex flex-col items-center gap-2"><Loader2 className="animate-spin text-cyan-400" size={32} /><span className="text-xs text-cyan-400 font-bold animate-pulse">{t('uploading')}</span></div>
+                  ) : isDragOver ? (
+                    <div className="flex flex-col items-center text-cyan-300 transition-colors">
+                      <Upload size={32} className="mb-2" />
+                      <span className="text-sm font-oxanium uppercase tracking-widest">Solte a imagem aqui</span>
+                    </div>
                     ) : imagePreview ? (
                         <>
                             <img src={imagePreview} className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-40 transition-opacity" />
@@ -109,6 +160,9 @@ const DreamModal = ({ isOpen, onClose, nodeData, onSave }) => {
                     )}
                     <input type="file" ref={fileInputRef} onChange={handleInputUpload} accept="image/*" className="hidden" disabled={isUploading} />
                 </div>
+                  {uploadError && (
+                    <p className="text-xs text-red-400 font-bold tracking-wide">{uploadError}</p>
+                  )}
             </div>
 
             {/* Título */}
