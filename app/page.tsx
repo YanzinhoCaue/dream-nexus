@@ -510,12 +510,12 @@ const DreamApp = () => {
         <Background color="#000" gap={30} size={1} style={{opacity: 0.1}} />
       </ReactFlow>
 
-      <div className="absolute bottom-6 left-6 z-[70] flex flex-col overflow-hidden rounded-lg border border-cyan-500/40 bg-black/80 shadow-[0_0_18px_rgba(0,229,255,0.18)] backdrop-blur-md">
+      <div className="mobile-zoom-controls absolute left-4 md:left-6 z-[70] flex flex-row md:flex-col overflow-hidden rounded-lg border border-cyan-500/40 bg-black/80 shadow-[0_0_18px_rgba(0,229,255,0.18)] backdrop-blur-md">
         <button
           onClick={() => zoomIn({ duration: 200 })}
           title="Aumentar zoom"
           aria-label="Aumentar zoom"
-          className="h-10 w-10 border-b border-cyan-500/30 text-cyan-400 transition-colors hover:bg-cyan-900/40 hover:text-white flex items-center justify-center"
+          className="h-10 w-10 border-r md:border-r-0 md:border-b border-cyan-500/30 text-cyan-400 transition-colors hover:bg-cyan-900/40 hover:text-white flex items-center justify-center"
         >
           <Plus size={16} />
         </button>
@@ -523,7 +523,7 @@ const DreamApp = () => {
           onClick={() => zoomOut({ duration: 200 })}
           title="Diminuir zoom"
           aria-label="Diminuir zoom"
-          className="h-10 w-10 border-b border-cyan-500/30 text-cyan-400 transition-colors hover:bg-cyan-900/40 hover:text-white flex items-center justify-center"
+          className="h-10 w-10 border-r md:border-r-0 md:border-b border-cyan-500/30 text-cyan-400 transition-colors hover:bg-cyan-900/40 hover:text-white flex items-center justify-center"
         >
           <Minus size={16} />
         </button>

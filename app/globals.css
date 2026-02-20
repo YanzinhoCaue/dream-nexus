@@ -64,3 +64,13 @@ body {
 .react-flow__controls-button:last-child {
     border-bottom: none !important;
 }
+
+.mobile-zoom-controls {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 5rem);
+}
+
+@media (min-width: 768px) {
+  .mobile-zoom-controls {
+    bottom: 1.5rem;
+  }
+}
